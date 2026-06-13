@@ -1,0 +1,50 @@
+; pulse_capture.pio
+; RP2040/RP2350 PIO program: measure HIGH then LOW edge durations of an OOK RF
+; data line and push each as a 32-bit count to the RX FIFO. On counter underflow
+; (an extremely long edge) it pushes the sentinel 0xFFFFFFFF.
+;
+; The data pin is selected from C via sm_config_set_in_pins + sm_config_set_jmp_pin
+; (both point at the same GPIO). `jmp pin` then branches on that pin's level.
+;
+; TIMING: both inner loops are exactly 2 PIO cycles per count (see CYCLES_PER_COUNT
+; in pio_capture.cpp). At sys=125MHz and clkdiv=25 the PIO runs at 5MHz, so one
+; count = 2 cycles = 0.4us. The C driver converts counts to microseconds using the
+; live system clock, so the .pio stays independent of the exact clock choice.
+;
+; Frame-gap detection is done in C (a LOW longer than FRAME_GAP_US closes a frame):
+; the 32-bit counter only underflows after minutes, so the sentinel is just a
+; safety net, not the normal gap signal.
+;
+; NOTE: pulse_capture.pio.h is the checked-in assembled form. Regenerate it with
+; pioasm after editing this file (see tools/build_pio.md).
+
+.program pulse_capture
+
+.wrap_target
+start:
+    wait 0 pin 0          ; ensure line is idle (low)
+    wait 1 pin 0          ; rising edge -> HIGH pulse begins
+    mov x, ~null          ; x = 0xFFFFFFFF (down-counter)
+high_loop:
+    jmp pin high_cont     ; still high -> keep counting
+    jmp high_done         ; went low  -> HIGH pulse finished
+high_cont:
+    jmp x-- high_loop     ; x--; loop while counter remains
+    jmp send_gap          ; counter underflow -> sentinel
+high_done:
+    mov isr, ~x           ; ISR = elapsed count (HIGH duration)
+    push noblock          ; -> RX FIFO
+    mov x, ~null          ; x = 0xFFFFFFFF
+low_loop:
+    jmp pin low_done      ; line high again -> LOW gap finished
+    jmp x-- low_loop      ; x--; loop while still low
+    jmp send_gap          ; counter underflow -> sentinel
+low_done:
+    mov isr, ~x           ; ISR = elapsed count (LOW duration)
+    push noblock          ; -> RX FIFO
+.wrap                     ; back to start
+
+send_gap:
+    mov isr, ~null        ; ISR = 0xFFFFFFFF sentinel
+    push noblock          ; -> RX FIFO
+    jmp start             ; resume from idle
