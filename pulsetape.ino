@@ -29,6 +29,9 @@ static TelegramConfig g_cfg = {
 #if defined(ARDUINO_ARCH_ESP32)
 
 #include "src/capture/rmt/rmt_capture.h"
+#if USE_SX1278_FRONTEND
+#include "src/radio/sx1278_ook.h"
+#endif
 
 static RmtCapture g_capture;
 
@@ -39,6 +42,12 @@ static FrameAssembler g_assembler(g_cfg, FRAME_GAP_US, print_sink, nullptr);
 
 void setup() {
   Serial.begin(115200);
+#if USE_SX1278_FRONTEND
+  // Put the onboard SX1278 into OOK continuous RX so DIO2 carries the data the
+  // RMT backend captures on RF_DATA_PIN (GPIO32).
+  sx1278_ook_begin(SX1276_SCK, SX1276_MISO, SX1276_MOSI, SX1276_NSS, SX1276_RST,
+                   RF_FREQUENCY_HZ);
+#endif
   g_capture.begin(RF_DATA_PIN);
 }
 

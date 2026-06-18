@@ -31,7 +31,7 @@ Strict dependency direction — the generic core depends on nothing below it:
 | Board | MCU | Capture backend | RF receiver |
 |---|---|---|---|
 | SenseCAP Indicator | RP2040 | PIO (`src/capture/pio/`) | SRX882S → GPIO27 |
-| LilyGO TTGO T3 LoRa32 433 V1.6.1 | ESP32 | RMT (`src/capture/rmt/`) | external SRX882S → GPIO36 (onboard SX1276 reserved for TX — see `receivers.md`) |
+| LilyGO TTGO T3 LoRa32 433 V1.6.1 | ESP32 | RMT (`src/capture/rmt/`) | onboard SX1278 OOK → DIO2/GPIO32 (primary); external SRX882S → GPIO36 via `-DPULSETAPE_RX_SOURCE_SRX882S`. See `receivers.md` |
 
 The `.ino` selects backend + threading by architecture macro; `board.h` defaults
 the board to match (ESP32 → LilyGO, RP2040 → SenseCAP) or honours an explicit

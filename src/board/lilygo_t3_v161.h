@@ -14,12 +14,22 @@
 
 #define BOARD_NAME "LilyGO TTGO T3 LoRa32 433MHz V1.6.1 (ESP32)"
 
-// --- RF receive: external analog superhet (SRX882S) ---
-// SRX882S DATA -> GPIO36 (VP). Input-only is fine (capture only reads); RMT RX
-// reads it through the GPIO matrix. SRX882S runs at 3.3V and its DATA is 3.3V
-// logic -> wire direct, no divider. Tie SRX882S pin 4 (CS) -> VCC. 17cm antenna.
-// GPIO36/39 are confirmed free on the V1.6.1 header.
-#define RF_DATA_PIN 36
+// --- RF receive source selection ---
+// PRIMARY (default): onboard SX1278 in OOK continuous mode; demodulated data on
+//   DIO2 -> GPIO32, captured by RMT. No extra hardware. See receivers.md.
+// ALTERNATIVE: define PULSETAPE_RX_SOURCE_SRX882S to instead use an external
+//   SRX882S superhet on GPIO36 (input-only, free on the V1.6.1 header; DATA is
+//   3.3V -> wire direct, no divider; tie SRX882S pin 4 CS -> VCC; 17cm antenna)
+//   and skip the SX1278 front-end. (Better OOK sensitivity; needs the module.)
+#if defined(PULSETAPE_RX_SOURCE_SRX882S)
+  #define RF_DATA_PIN 36          // external SRX882S DATA
+  #define USE_SX1278_FRONTEND 0
+#else
+  #define RF_DATA_PIN 32          // SX1276 DIO2 (== SX1276_DIO2)
+  #define USE_SX1278_FRONTEND 1
+#endif
+
+#define RF_FREQUENCY_HZ 433920000UL
 
 // --- Capture timing thresholds (microseconds) ---
 #define PULSE_MIN_US 50     // shorter = noise (RMT signal_range_min)
