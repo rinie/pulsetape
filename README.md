@@ -18,13 +18,24 @@ Strict dependency direction — the generic core depends on nothing below it:
 | Layer | Path | Knows about |
 |---|---|---|
 | Generic core | `src/pulsetape/` | nothing hardware — plain C++, no `Arduino.h`, no PIO, no pins |
-| Capture backend | `src/capture/pio/` | PIO + board; implements `capture_iface.h` |
-| Board | `src/board/` | SenseCAP pins, clock, thresholds |
+| Capture backend | `src/capture/pio/` (RP2040), `src/capture/rmt/` (ESP32) | implements `capture_iface.h` |
+| Board | `src/board/` | per-board pins, clock, thresholds |
 | App | `pulsetape.ino`, `src/app/` | wires the above together, prints debug |
 
 - **Swap the board** → add `src/board/<name>.h` and point `board.h` at it.
-- **Swap the capture mechanism** (interrupt/RMT/timer instead of PIO) → add a
+- **Swap the capture mechanism** (RMT/interrupt/timer instead of PIO) → add a
   sibling backend implementing `ICaptureBackend`. `src/pulsetape/` does not change.
+
+### Supported targets
+
+| Board | MCU | Capture backend | RF receiver |
+|---|---|---|---|
+| SenseCAP Indicator | RP2040 | PIO (`src/capture/pio/`) | SRX882S → GPIO27 |
+| LilyGO TTGO T3 LoRa32 433 V1.6.1 | ESP32 | RMT (`src/capture/rmt/`) | onboard SX1278 OOK → DIO2/GPIO32 (primary); external SRX882S → GPIO36 via `-DPULSETAPE_RX_SOURCE_SRX882S`. See `receivers.md` |
+
+The `.ino` selects backend + threading by architecture macro; `board.h` defaults
+the board to match (ESP32 → LilyGO, RP2040 → SenseCAP) or honours an explicit
+`-DBOARD_*` flag.
 
 Future work slots (stub headers): `src/link/cobs_uart.h`,
 `src/decode/manchester.h`, `src/capture/tx_pio/tx_pio.h`.
@@ -32,13 +43,16 @@ Future work slots (stub headers): `src/link/cobs_uart.h`,
 ## Build & flash
 
 ### Arduino IDE
-1. Install the **arduino-pico** core (earlephilhower) via the Boards Manager.
-2. Open `pulsetape.ino`, select the RP2040 board.
-3. Put the SenseCAP RP2040 in bootloader mode (hold the BOOT pinhole on the
-   underside while connecting USB → `RPI-BOOT` drive), then Upload.
+1. Install the core for your target: **arduino-pico** (earlephilhower) for the
+   SenseCAP/RP2040, or **arduino-esp32 3.x** for the LilyGO T3/ESP32.
+2. Open `pulsetape.ino` and select the matching board.
+3. Flash:
+   - RP2040: bootloader mode (hold BOOT pinhole while connecting USB → `RPI-BOOT`).
+   - ESP32: just Upload over USB.
 4. Open Serial Monitor at 115200 baud.
 
-Arduino IDE compiles the sketch plus `src/` recursively, so all layers are
+Arduino IDE compiles the sketch plus `src/` recursively; backends for the other
+architecture compile to nothing (guarded by `ARDUINO_ARCH_*`), so all layers are
 picked up automatically.
 
 ### PlatformIO (optional)
