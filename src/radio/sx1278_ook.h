@@ -10,8 +10,11 @@
 //
 // Bare Arduino SPI, no RadioLib — register values are derived from the Semtech
 // SX1276/77/78/79 datasheet (facts), so PulseTape stays dependency-free and MIT.
-// Concepts (which OOK knobs matter: peak threshold, RxBw, bit-sync off) were
-// learned from OOKwiz (LGPL-3.0) as inspiration only — no code was copied.
+// Which OOK knobs matter (peak threshold, wide RxBw, low bitrate, fixed floor,
+// bit-sync off) and the chosen values were informed by two established projects
+// as INSPIRATION ONLY — no code copied from either:
+//   - rtl_433_ESP (https://github.com/NorthernMan54/rtl_433_ESP, GPL, via RadioLib)
+//   - OOKwiz      (https://github.com/ropg/OOKwiz, LGPL-3.0)
 // RadioLib (MIT) is a drop-in alternative if you prefer a maintained driver or
 // want the TX path later.
 //

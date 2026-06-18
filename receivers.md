@@ -127,12 +127,28 @@ encumber an MIT firmware). General understanding, not legal advice.
 ## Radio init: bare SPI vs RadioLib
 
 The SX1278 OOK-continuous-RX setup is ~a dozen SPI register writes (mode, Frf,
-RxBw, OOK peak-threshold, bit-sync off, DIO mapping, RX-continuous). PulseTape
-does this **bare-SPI** in `src/radio/sx1278_ook.cpp`, with register values from
-the Semtech datasheet (facts) — keeping the project dependency-free and MIT.
-[RadioLib](https://github.com/jgromes/RadioLib) (MIT) is a drop-in alternative if
-you prefer a maintained driver or want the SX1276 TX path; it is license-clean
-to depend on, unlike OOKwiz.
+RxBw, OOK peak-threshold + fixed floor, bit-sync off, DIO mapping, RX-continuous).
+PulseTape does this **bare-SPI** in `src/radio/sx1278_ook.cpp`, with register
+values from the Semtech datasheet (facts) — keeping the project dependency-free
+and MIT. [RadioLib](https://github.com/jgromes/RadioLib) (MIT) is a drop-in
+alternative if you prefer a maintained driver or want the SX1276 TX path; it is
+license-clean to depend on, unlike OOKwiz.
+
+The starting values converge with what rtl_433_ESP and OOKwiz settled on for OOK
+(used as inspiration; no code copied):
+
+| Setting | rtl_433_ESP | OOKwiz | PulseTape `sx1278_ook` |
+|---|---|---|---|
+| RX bandwidth | ~125 kHz (narrower lost signals) | wide | **~125 kHz** (`RegRxBw 0x02`) |
+| OOK threshold | peak + fixed floor ~90, dec 1/1-chip, step 0.5 dB | peak | **peak + floor 0x5A, dec 1/1-chip, step 0.5 dB** |
+| Bitrate | 1.2 kbps | exposed | **~1.2 kbps** (`0x682B`) |
+| Bit-sync | — | raw | **off** (raw slicer on DIO2) |
+| Radio driver | RadioLib (MIT) | bare registers | bare registers |
+| Capture | edge ISR | edge ISR | **RMT** |
+
+Both real projects capture with a GPIO edge ISR; PulseTape uses RMT instead
+(hardware duration + frame-gap + glitch filter). A future refinement is a dynamic
+RSSI/noise-driven floor like rtl_433_ESP's `AUTOOOKFIX` — the *idea*, reimplemented.
 
 ---
 

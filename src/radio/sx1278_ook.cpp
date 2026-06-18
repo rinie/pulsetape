@@ -18,6 +18,7 @@ static const uint8_t REG_LNA          = 0x0C;
 static const uint8_t REG_RX_CONFIG    = 0x0D;
 static const uint8_t REG_RX_BW        = 0x12;
 static const uint8_t REG_OOK_PEAK     = 0x14;
+static const uint8_t REG_OOK_FIX      = 0x15;
 static const uint8_t REG_OOK_AVG      = 0x16;
 static const uint8_t REG_DIO_MAPPING1 = 0x40;
 static const uint8_t REG_DIO_MAPPING2 = 0x41;
@@ -79,10 +80,17 @@ bool sx1278_ook_begin(uint8_t sck, uint8_t miso, uint8_t mosi,
   writeReg(REG_FRF_MID, (uint8_t)(frf >> 8));
   writeReg(REG_FRF_LSB, (uint8_t)(frf));
 
-  // Bitrate ~4.8 kbps: BitRate = FXOSC / rate. Sets the OOK threshold timing
-  // reference even with bit-sync off. 32e6/4800 = 6667 = 0x1A0B.
-  writeReg(REG_BITRATE_MSB, 0x1A);
-  writeReg(REG_BITRATE_LSB, 0x0B);
+  // The OOK front-end values below converge with what two established projects
+  // settled on for 433 MHz OOK — rtl_433_ESP (https://github.com/NorthernMan54/
+  // rtl_433_ESP, GPL, via RadioLib) and OOKwiz (https://github.com/ropg/OOKwiz,
+  // LGPL-3.0). Used as inspiration for the *values* (datasheet facts) only; no
+  // code from either project was copied.
+
+  // Bitrate ~1.2 kbps: BitRate = FXOSC / rate. Even with bit-sync off this sets
+  // the OOK peak-threshold timing reference; a slow rate suits slow OOK. rtl_433_
+  // ESP uses 1.2 kbps. 32e6/1200 = 26667 = 0x682B.
+  writeReg(REG_BITRATE_MSB, 0x68);
+  writeReg(REG_BITRATE_LSB, 0x2B);
 
   // Max LNA gain + boost (RegLna).
   writeReg(REG_LNA, 0x23);
@@ -91,14 +99,21 @@ bool sx1278_ook_begin(uint8_t sck, uint8_t miso, uint8_t mosi,
   // OOK — handled downstream by the glitch filter + repeat detection.
   writeReg(REG_RX_CONFIG, 0x08);
 
-  // RegRxBw ~50 kHz: (RxBwMant=20 << 3) | RxBwExp=3 -> 0x0B. Widen for drifty
-  // cheap transmitters at the cost of more noise.
-  writeReg(REG_RX_BW, 0x0B);
+  // RegRxBw ~125 kHz: (RxBwMant=16 -> code 00) | (RxBwExp=2) -> 0x02. Wide on
+  // purpose: rtl_433_ESP found narrower bandwidth dropped received signals, and
+  // cheap transmitters drift. (~50 kHz lost packets; do not narrow without testing.)
+  writeReg(REG_RX_BW, 0x02);
 
   // RegOokPeak: peak threshold (OokThreshType=01 -> 0x08), BitSyncOn=0 so DIO2
   // carries the RAW slicer output (required for arbitrary multi-rate OOK).
+  // OokPeakTheshStep = 0.5 dB (bits 2:0 = 000).
   writeReg(REG_OOK_PEAK, 0x08);
-  // RegOokAvg: peak threshold decay rate (datasheet default-ish).
+  // RegOokFix: fixed floor under the peak detector — rejects low-level noise in
+  // the gaps. Starting point ~90 (rtl_433_ESP default OOK_FIXED_THRESHOLD); tune
+  // on hardware. (A future refinement: adjust this floor dynamically from RSSI /
+  // noise, à la rtl_433_ESP's AUTOOOKFIX — reimplemented, not copied.)
+  writeReg(REG_OOK_FIX, 0x5A);
+  // RegOokAvg: OokPeakTheshDec = once per chip (bits 7:5 = 000); rest default.
   writeReg(REG_OOK_AVG, 0x02);
 
   // In continuous RX, DIO2 outputs DATA regardless of mapping; keep defaults.
