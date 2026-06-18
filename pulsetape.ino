@@ -4,28 +4,19 @@
 //   src/capture/    capture backend(s) implementing the generic interface
 //   src/board/      board-specific pins/clock/thresholds
 //
-// Wiring on the RP2040 (arduino-pico, dual core):
-//   Core 1 (setup1/loop1): PIO capture -> frame assembly -> telegram queue
-//   Core 0 (setup/loop):   drain the queue -> print debug line over USB serial
+// Per-target wiring (selected by the Arduino core's architecture macro):
+//   RP2040 (SenseCAP): PIO capture on core 1 -> queue -> debug print on core 0
+//   ESP32  (LilyGO T3): RMT capture -> assemble -> debug print, single loop()
 
 #include <Arduino.h>
-#include "pico/util/queue.h"
 
 #include "src/board/board.h"
 #include "src/pulsetape/telegram.h"
 #include "src/pulsetape/capture_iface.h"
-#include "src/capture/pio/pio_capture.h"
 #include "src/app/debug_sink.h"
 
-#define QUEUE_DEPTH 4
-
-static queue_t        g_queue;
-static volatile bool  g_queue_ready = false;
-
-static PioCapture     g_capture;  // defaults to pio0
-
-// Filled from the board layer; this is the only place board constants meet the
-// generic config struct.
+// Filled from the board layer; the one place board constants meet the generic
+// config struct. Shared by both targets.
 static TelegramConfig g_cfg = {
     /* pulse_min_us     */ PULSE_MIN_US,
     /* pulse_max_us     */ PULSE_MAX_US,
@@ -34,13 +25,45 @@ static TelegramConfig g_cfg = {
     /* repeat_window_ms */ REPEAT_WINDOW_MS,
 };
 
-// Sink: hand a forward-worthy telegram to core 0 via the queue. Non-blocking;
-// drops the telegram if the queue is momentarily full.
+// ===================================================================== ESP32
+#if defined(ARDUINO_ARCH_ESP32)
+
+#include "src/capture/rmt/rmt_capture.h"
+
+static RmtCapture g_capture;
+
+// RMT + its ISR do capture in hardware, so a single task is enough: the sink
+// prints directly.
+static void print_sink(const RawTelegram& t, void*) { debug_print_telegram(t); }
+static FrameAssembler g_assembler(g_cfg, FRAME_GAP_US, print_sink, nullptr);
+
+void setup() {
+  Serial.begin(115200);
+  g_capture.begin(RF_DATA_PIN);
+}
+
+void loop() {
+  CaptureEvent ev = g_capture.next();   // blocks on the RMT done-queue
+  g_assembler.onEvent(ev, millis());
+}
+
+// ==================================================================== RP2040
+#elif defined(ARDUINO_ARCH_RP2040)
+
+#include "pico/util/queue.h"
+#include "src/capture/pio/pio_capture.h"
+
+#define QUEUE_DEPTH 4
+
+static queue_t       g_queue;
+static volatile bool g_queue_ready = false;
+static PioCapture    g_capture;  // defaults to pio0
+
+// Sink: hand a forward-worthy telegram to core 0 via the queue. Non-blocking.
 static void queue_sink(const RawTelegram& t, void* ctx) {
   queue_t* q = static_cast<queue_t*>(ctx);
   queue_try_add(q, &t);
 }
-
 static FrameAssembler g_assembler(g_cfg, FRAME_GAP_US, queue_sink, &g_queue);
 
 // ---- Core 0 ----
@@ -66,3 +89,7 @@ void loop1() {
   CaptureEvent ev = g_capture.next();   // blocks on the PIO FIFO
   g_assembler.onEvent(ev, millis());
 }
+
+#else
+#error "Unsupported architecture: expected ARDUINO_ARCH_ESP32 or ARDUINO_ARCH_RP2040."
+#endif

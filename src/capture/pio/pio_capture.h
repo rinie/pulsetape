@@ -10,6 +10,8 @@
 #ifndef PULSETAPE_PIO_CAPTURE_H
 #define PULSETAPE_PIO_CAPTURE_H
 
+#if defined(ARDUINO_ARCH_RP2040)
+
 #include "hardware/pio.h"
 #include "../../pulsetape/capture_iface.h"
 
@@ -31,4 +33,5 @@ class PioCapture : public ICaptureBackend {
   uint32_t pio_clk_hz_;  // effective PIO clock after clkdiv, cached in begin()
 };
 
+#endif // ARDUINO_ARCH_RP2040
 #endif // PULSETAPE_PIO_CAPTURE_H

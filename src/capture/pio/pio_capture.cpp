@@ -1,5 +1,7 @@
 // capture/pio/pio_capture.cpp — see pio_capture.h.
 
+#if defined(ARDUINO_ARCH_RP2040)
+
 #include "pio_capture.h"
 #include "pulse_capture.pio.h"
 #include "../../board/board.h"
@@ -74,3 +76,5 @@ CaptureEvent PioCapture::next() {
   ev.duration_us = (uint16_t)us;
   return ev;
 }
+
+#endif // ARDUINO_ARCH_RP2040
