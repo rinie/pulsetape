@@ -29,6 +29,7 @@ static TelegramConfig g_cfg = {
 #if defined(ARDUINO_ARCH_ESP32)
 
 #include "src/capture/rmt/rmt_capture.h"
+#include "src/app/oled_display.h"
 #if USE_SX1278_FRONTEND
 #include "src/radio/sx1278_ook.h"
 #endif
@@ -36,19 +37,27 @@ static TelegramConfig g_cfg = {
 static RmtCapture g_capture;
 
 // RMT + its ISR do capture in hardware, so a single task is enough: the sink
-// prints directly.
-static void print_sink(const RawTelegram& t, void*) { debug_print_telegram(t); }
+// prints to Serial and refreshes the OLED.
+static void print_sink(const RawTelegram& t, void*) {
+  debug_print_telegram(t);
+  oled_show_telegram(t);
+}
 static FrameAssembler g_assembler(g_cfg, FRAME_GAP_US, print_sink, nullptr);
 
 void setup() {
   Serial.begin(115200);
+  delay(500);  // let the host open the port before first print
 #if USE_SX1278_FRONTEND
-  // Put the onboard SX1278 into OOK continuous RX so DIO2 carries the data the
-  // RMT backend captures on RF_DATA_PIN (GPIO32).
-  sx1278_ook_begin(SX1276_SCK, SX1276_MISO, SX1276_MOSI, SX1276_NSS, SX1276_RST,
-                   RF_FREQUENCY_HZ);
+  bool sx_ok = sx1278_ook_begin(SX1276_SCK, SX1276_MISO, SX1276_MOSI, SX1276_NSS, SX1276_RST,
+                                 RF_FREQUENCY_HZ);
+  Serial.print("SX1278 init: ");
+  Serial.println(sx_ok ? "OK" : "FAILED (check SPI wiring)");
+#else
+  bool sx_ok = false;
 #endif
+  oled_begin(sx_ok);
   g_capture.begin(RF_DATA_PIN);
+  Serial.println("RMT capture started, waiting for RF...");
 }
 
 void loop() {
