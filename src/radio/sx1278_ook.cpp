@@ -1,5 +1,7 @@
 // radio/sx1278_ook.cpp — see sx1278_ook.h.
-// SCAFFOLD: datasheet-derived register values, not yet hardware-verified.
+// OOK register values are aligned to a known-good dump from this exact board
+// (see comment in sx1278_ook_begin). The radio config is therefore proven; the
+// PulseTape capture/decode pipeline downstream is still unverified end-to-end.
 
 #if defined(ARDUINO_ARCH_ESP32)
 
@@ -80,41 +82,43 @@ bool sx1278_ook_begin(uint8_t sck, uint8_t miso, uint8_t mosi,
   writeReg(REG_FRF_MID, (uint8_t)(frf >> 8));
   writeReg(REG_FRF_LSB, (uint8_t)(frf));
 
-  // The OOK front-end values below converge with what two established projects
-  // settled on for 433 MHz OOK — rtl_433_ESP (https://github.com/NorthernMan54/
-  // rtl_433_ESP, GPL, via RadioLib) and OOKwiz (https://github.com/ropg/OOKwiz,
-  // LGPL-3.0). Used as inspiration for the *values* (datasheet facts) only; no
-  // code from either project was copied.
+  // The OOK front-end values below are aligned to a KNOWN-GOOD register dump from
+  // this exact board (LilyGO T3 V1.6.1, SX1278) that successfully received KAKU
+  // under rinie/rtl_433_ESP @ ZradioSX127x ("first kaku received.txt": RegOpMode
+  // 0x2D, RegRxBw 0x01, RegOokPeak 0x08, RegOokFix 0x0F, RegOokAvg 0x12,
+  // RegLna 0x20). Register *values* are facts (datasheet + that dump); no code
+  // was copied from rtl_433_ESP (GPL) or OOKwiz (LGPL-3.0).
 
   // Bitrate ~1.2 kbps: BitRate = FXOSC / rate. Even with bit-sync off this sets
   // the OOK peak-threshold timing reference; a slow rate suits slow OOK. rtl_433_
-  // ESP uses 1.2 kbps. 32e6/1200 = 26667 = 0x682B.
+  // ESP uses 1.2 kbps. 32e6/1200 = 26667 = 0x682B. (Not in the dump; kept.)
   writeReg(REG_BITRATE_MSB, 0x68);
   writeReg(REG_BITRATE_LSB, 0x2B);
 
-  // Max LNA gain + boost (RegLna).
-  writeReg(REG_LNA, 0x23);
+  // RegLna: max gain, HF boost off (0x20) — matches the working dump. 433 MHz
+  // uses the LF port, so the HF boost bits are moot here.
+  writeReg(REG_LNA, 0x20);
 
   // AGC auto on (RegRxConfig bit3). AGC settling is what makes the gaps noisy on
   // OOK — handled downstream by the glitch filter + repeat detection.
   writeReg(REG_RX_CONFIG, 0x08);
 
-  // RegRxBw ~125 kHz: (RxBwMant=16 -> code 00) | (RxBwExp=2) -> 0x02. Wide on
-  // purpose: rtl_433_ESP found narrower bandwidth dropped received signals, and
-  // cheap transmitters drift. (~50 kHz lost packets; do not narrow without testing.)
-  writeReg(REG_RX_BW, 0x02);
+  // RegRxBw ~250 kHz: (RxBwMant=16 -> code 00) | (RxBwExp=1) -> 0x01. The working
+  // dump uses this; wide suits drifty cheap transmitters. Narrow only with testing
+  // (rtl_433_ESP found narrower bandwidth dropped signals).
+  writeReg(REG_RX_BW, 0x01);
 
   // RegOokPeak: peak threshold (OokThreshType=01 -> 0x08), BitSyncOn=0 so DIO2
   // carries the RAW slicer output (required for arbitrary multi-rate OOK).
   // OokPeakTheshStep = 0.5 dB (bits 2:0 = 000).
   writeReg(REG_OOK_PEAK, 0x08);
-  // RegOokFix: fixed floor under the peak detector — rejects low-level noise in
-  // the gaps. Starting point ~90 (rtl_433_ESP default OOK_FIXED_THRESHOLD); tune
-  // on hardware. (A future refinement: adjust this floor dynamically from RSSI /
-  // noise, à la rtl_433_ESP's AUTOOOKFIX — reimplemented, not copied.)
-  writeReg(REG_OOK_FIX, 0x5A);
-  // RegOokAvg: OokPeakTheshDec = once per chip (bits 7:5 = 000); rest default.
-  writeReg(REG_OOK_AVG, 0x02);
+  // RegOokFix: LOW fixed floor (0x0F = 15) per the working dump. NB: rtl_433_ESP's
+  // README ~90 is its FIXED-mode default; this board's proven PEAK-mode config uses
+  // 0x0F — a high floor would kill sensitivity. (Future: dynamic RSSI/noise floor,
+  // à la rtl_433_ESP AUTOOOKFIX — reimplemented, not copied.)
+  writeReg(REG_OOK_FIX, 0x0F);
+  // RegOokAvg: datasheet default 0x12 (OokPeakTheshDec = once per chip); matches dump.
+  writeReg(REG_OOK_AVG, 0x12);
 
   // In continuous RX, DIO2 outputs DATA regardless of mapping; keep defaults.
   writeReg(REG_DIO_MAPPING1, 0x00);
