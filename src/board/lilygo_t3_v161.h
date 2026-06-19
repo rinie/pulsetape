@@ -25,7 +25,7 @@
   #define RF_DATA_PIN 36          // external SRX882S DATA
   #define USE_SX1278_FRONTEND 0
 #else
-  #define RF_DATA_PIN 32          // SX1276 DIO2 (== SX1276_DIO2)
+  #define RF_DATA_PIN 35          // SX1276 DIO2 — confirmed GPIO35 on V1.6.1
   #define USE_SX1278_FRONTEND 1
 #endif
 
@@ -49,7 +49,7 @@
 #define SX1276_RST   23   // some revisions 14 — verify
 #define SX1276_DIO0  26
 #define SX1276_DIO1  33
-#define SX1276_DIO2  32
+#define SX1276_DIO2  35          // confirmed GPIO35 on V1.6.1 (was 32)
 
 // --- Onboard SSD1306 OLED ---
 // pins_arduino.h for ttgo-lora32-v1 has SDA=4/SCL=15 (V1.0 pinout) — WRONG

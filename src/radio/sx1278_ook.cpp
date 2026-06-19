@@ -71,10 +71,16 @@ bool sx1278_ook_begin(uint8_t sck, uint8_t miso, uint8_t mosi,
     return false;
   }
 
-  // LongRangeMode bit is only writable in sleep.
-  writeReg(REG_OP_MODE, MODE_SLEEP);
-  delay(2);
+  // LongRangeMode can only change in sleep. If the chip booted in LoRa mode,
+  // a single write of 0x00 may be ignored. Two-step: sleep in current mode
+  // first, then clear LongRangeMode, then set OOK standby.
+  writeReg(REG_OP_MODE, readReg(REG_OP_MODE) & 0xF8);  // sleep, keep LongRangeMode
+  delay(10);
+  writeReg(REG_OP_MODE, 0x00);                          // sleep + FSK/OOK
+  delay(5);
   writeReg(REG_OP_MODE, OPMODE_OOK_LOWFREQ | MODE_STDBY);
+  delay(5);
+  Serial.print("SX1278 opmode_after_stdby=0x"); Serial.println(readReg(REG_OP_MODE), HEX);
 
   // Carrier frequency: Frf = freq * 2^19 / FXOSC, FXOSC = 32 MHz.
   uint32_t frf = (uint32_t)(((uint64_t)freq_hz << 19) / 32000000ULL);
@@ -112,12 +118,9 @@ bool sx1278_ook_begin(uint8_t sck, uint8_t miso, uint8_t mosi,
   // carries the RAW slicer output (required for arbitrary multi-rate OOK).
   // OokPeakTheshStep = 0.5 dB (bits 2:0 = 000).
   writeReg(REG_OOK_PEAK, 0x08);
-  // RegOokFix: LOW fixed floor (0x0F = 15) per the working dump. NB: rtl_433_ESP's
-  // README ~90 is its FIXED-mode default; this board's proven PEAK-mode config uses
-  // 0x0F — a high floor would kill sensitivity. (Future: dynamic RSSI/noise floor,
-  // à la rtl_433_ESP AUTOOOKFIX — reimplemented, not copied.)
+  // RegOokFix: LOW fixed floor (0x0F = 15) per the working dump.
   writeReg(REG_OOK_FIX, 0x0F);
-  // RegOokAvg: datasheet default 0x12 (OokPeakTheshDec = once per chip); matches dump.
+  // RegOokAvg: datasheet default 0x12; matches dump.
   writeReg(REG_OOK_AVG, 0x12);
 
   // In continuous RX, DIO2 outputs DATA regardless of mapping; keep defaults.
@@ -126,6 +129,8 @@ bool sx1278_ook_begin(uint8_t sck, uint8_t miso, uint8_t mosi,
 
   // Enter continuous receive — data now streams on DIO2.
   writeReg(REG_OP_MODE, OPMODE_OOK_LOWFREQ | MODE_RX_CONT);
+  delay(5);
+  Serial.print("SX1278 opmode_rxcont=0x"); Serial.println(readReg(REG_OP_MODE), HEX);
 
   SPI.endTransaction();
   return true;
