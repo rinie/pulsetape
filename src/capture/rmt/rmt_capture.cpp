@@ -30,9 +30,16 @@ CaptureEvent RmtCapture::next() {
 
     // Block for a completed frame if we have none in flight.
     // IDF v4 RMT driver pushes one frame per ring-buffer item after the idle timeout.
+    // Use a bounded wait so loop() returns periodically and the arduino-esp32 task
+    // watchdog (fed between loop() calls) doesn't fire on a quiet channel.
     if (!cur_items_) {
         size_t rx_size = 0;
-        cur_items_ = (rmt_item32_t*)xRingbufferReceive(rb_, &rx_size, portMAX_DELAY);
+        cur_items_ = (rmt_item32_t*)xRingbufferReceive(rb_, &rx_size, pdMS_TO_TICKS(500));
+        if (!cur_items_) {
+            ev.type = CaptureEvent::FRAME_GAP;
+            ev.duration_us = 0;
+            return ev;
+        }
         cur_count_ = rx_size / sizeof(rmt_item32_t);
         sym_idx_   = 0;
         half_      = 0;

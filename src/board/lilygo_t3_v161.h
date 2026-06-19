@@ -51,15 +51,11 @@
 #define SX1276_DIO1  33
 #define SX1276_DIO2  32
 
-// --- Onboard SSD1306 OLED (reference; not used by capture) ---
-// pins_arduino.h for ttgo-lora32-v1 defines OLED_SDA=4 / OLED_SCL=15;
-// guard so our values only apply when the variant header is absent.
-#ifndef OLED_SDA
-#define OLED_SDA 21       // some revisions 4 — verify
-#endif
-#ifndef OLED_SCL
-#define OLED_SCL 22       // some revisions 15 — verify
-#endif
-#define OLED_RST 16
+// --- Onboard SSD1306 OLED ---
+// OLED_SDA and OLED_SCL come from the Arduino variant (pins_arduino.h):
+//   ttgo-lora32-v1 → SDA=4, SCL=15. Do not redefine them here.
+// GPIO16 on ESP32-PICO-D4 is SPICS0 (internal flash CS) — do NOT drive it.
+// The OLED RST is power-on only (RC to VCC), so pass -1 to the library.
+#define OLED_RST (-1)
 
 #endif // PULSETAPE_BOARD_LILYGO_T3_V161_H
