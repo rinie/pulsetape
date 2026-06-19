@@ -32,11 +32,19 @@ static void redraw_header() {
     s_disp.println(s_ok ? "OK " : "FAIL");
 }
 
+// Confirmed by runtime I2C scan on LilyGO TTGO T3 LoRa32 V1.6.1.
+// pins_arduino.h for ttgo-lora32-v1 gives SDA=4/SCL=15 (V1.0 pinout) — wrong.
+// Hard-coded to avoid the macro re-definition from pins_arduino.h (included
+// later via Wire.h with no #ifndef guard).
+static const uint8_t kSDA  = 21;
+static const uint8_t kSCL  = 22;
+static const uint8_t kADDR = 0x3C;
+
 void oled_begin(bool sx1278_ok) {
     s_ok = sx1278_ok;
-    Wire.begin(OLED_SDA, OLED_SCL);
-    if (!s_disp.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR)) {
-        Serial.println("SSD1306 not found");
+    Wire.begin(kSDA, kSCL);
+    if (!s_disp.begin(SSD1306_SWITCHCAPVCC, kADDR)) {
+        Serial.println("OLED: SSD1306 begin failed");
         return;
     }
     s_disp.clearDisplay();
