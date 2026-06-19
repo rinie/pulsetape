@@ -56,13 +56,48 @@ void setup() {
   bool sx_ok = false;
 #endif
   oled_begin(sx_ok);
+  setup_gpio_scan();
   g_capture.begin(RF_DATA_PIN);
   Serial.println("RMT capture started, waiting for RF...");
 }
 
+// GPIO scan: sample DIO candidate pins and print which ones are ever HIGH.
+// This bypasses RMT entirely to check if DIO2 is physically on GPIO32.
+// Candidate pins from V1.x schematics: DIO0=26, DIO1=33, DIO2=32, DIO3=35.
+static const uint8_t kDioPins[] = {26, 32, 33, 34, 35, 39};
+static uint32_t g_pin_high[6] = {};
+static uint32_t g_pulse_count = 0;
+static uint32_t g_last_report_ms = 0;
+
+void setup_gpio_scan() {
+  for (uint8_t i = 0; i < 6; i++) {
+    pinMode(kDioPins[i], INPUT);
+  }
+}
+
 void loop() {
-  CaptureEvent ev = g_capture.next();   // blocks on the RMT done-queue
+  // Sample all candidate DIO pins.
+  for (uint8_t i = 0; i < 6; i++) {
+    if (digitalRead(kDioPins[i])) g_pin_high[i]++;
+  }
+
+  CaptureEvent ev = g_capture.next();
+  if (ev.type == CaptureEvent::DURATION) g_pulse_count++;
   g_assembler.onEvent(ev, millis());
+
+  uint32_t now = millis();
+  if (now - g_last_report_ms >= 5000) {
+    Serial.print("rmt_pulses="); Serial.print(g_pulse_count);
+    Serial.print(" gpio:");
+    for (uint8_t i = 0; i < 6; i++) {
+      Serial.print(kDioPins[i]); Serial.print('='); Serial.print(g_pin_high[i]);
+      if (i < 5) Serial.print(',');
+    }
+    Serial.println();
+    g_pulse_count = 0;
+    memset(g_pin_high, 0, sizeof(g_pin_high));
+    g_last_report_ms = now;
+  }
 }
 
 // ==================================================================== RP2040

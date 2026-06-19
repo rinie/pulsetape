@@ -43,6 +43,11 @@ static const uint8_t kADDR = 0x3C;
 void oled_begin(bool sx1278_ok) {
     s_ok = sx1278_ok;
     Wire.begin(kSDA, kSCL);
+    // Blank the display immediately so stale content doesn't linger during init.
+    Wire.beginTransmission(kADDR);
+    Wire.write(0x00);  // command mode
+    Wire.write(0xAE);  // display off
+    Wire.endTransmission();
     if (!s_disp.begin(SSD1306_SWITCHCAPVCC, kADDR)) {
         Serial.println("OLED: SSD1306 begin failed");
         return;
