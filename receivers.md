@@ -137,18 +137,29 @@ license-clean to depend on, unlike OOKwiz.
 The starting values converge with what rtl_433_ESP and OOKwiz settled on for OOK
 (used as inspiration; no code copied):
 
-| Setting | rtl_433_ESP | OOKwiz | PulseTape `sx1278_ook` |
+The values are now pinned to a **known-good register dump from this exact board**
+(LilyGO T3 V1.6.1, SX1278) that received KAKU under `rinie/rtl_433_ESP @
+ZradioSX127x` — i.e. ground truth, not a guess:
+
+| Setting | rtl_433_ESP README | proven on-device dump | PulseTape `sx1278_ook` |
 |---|---|---|---|
-| RX bandwidth | ~125 kHz (narrower lost signals) | wide | **~125 kHz** (`RegRxBw 0x02`) |
-| OOK threshold | peak + fixed floor ~90, dec 1/1-chip, step 0.5 dB | peak | **peak + floor 0x5A, dec 1/1-chip, step 0.5 dB** |
-| Bitrate | 1.2 kbps | exposed | **~1.2 kbps** (`0x682B`) |
-| Bit-sync | — | raw | **off** (raw slicer on DIO2) |
-| Radio driver | RadioLib (MIT) | bare registers | bare registers |
+| RegOpMode | — | 0x2D | **0x2D** |
+| RX bandwidth | ~125 kHz | **0x01 (~250 kHz)** | **0x01** |
+| OOK threshold type | peak | peak (`RegOokPeak 0x08`) | **0x08** |
+| OOK fixed floor | ~90 (fixed-mode default) | **0x0F (15)** | **0x0F** |
+| RegOokAvg | — | 0x12 (default) | **0x12** |
+| RegLna | — | 0x20 (boost off) | **0x20** |
+| Bitrate | 1.2 kbps | (not dumped) | ~1.2 kbps (`0x682B`) |
+| Bit-sync | — | — | off (raw slicer on DIO2) |
+| Radio driver | RadioLib (MIT) | RadioLib | bare registers |
 | Capture | edge ISR | edge ISR | **RMT** |
 
-Both real projects capture with a GPIO edge ISR; PulseTape uses RMT instead
-(hardware duration + frame-gap + glitch filter). A future refinement is a dynamic
-RSSI/noise-driven floor like rtl_433_ESP's `AUTOOOKFIX` — the *idea*, reimplemented.
+Note the **fixed floor**: rtl_433_ESP's README ~90 is a *fixed-mode* default; this
+board's proven *peak-mode* config uses **0x0F** — a high floor would kill
+sensitivity. Both reference projects capture with a GPIO edge ISR; PulseTape uses
+RMT instead (hardware duration + frame-gap + glitch filter). A future refinement is
+a dynamic RSSI/noise-driven floor like rtl_433_ESP's `AUTOOOKFIX` — the *idea*,
+reimplemented.
 
 ---
 
