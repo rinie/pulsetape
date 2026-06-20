@@ -52,7 +52,7 @@ static const int kNumScan = sizeof(kScanPins) / sizeof(kScanPins[0]);
 // ---- runtime state (changed live via serial) ----
 enum Mode { MODE_PINSCAN, MODE_RMTDUMP };
 static Mode     g_mode  = MODE_PINSCAN;
-static int      g_rxPin = 35;       // default guess; change with keys 1..6
+static int      g_rxPin = 32;       // DIO2 on the V1.6.1 (confirmed); change with keys 1..6
 static bool     g_rmtOn = false;
 static uint32_t g_frames = 0;
 static RingbufHandle_t rb = nullptr;
@@ -94,9 +94,19 @@ static bool sx_init() {
   wr(0x0C, 0x20);                   // RegLna: max gain, HF boost off
   wr(0x0D, 0x08);                   // RegRxConfig: AGC auto on
   wr(0x12, 0x01);                   // RegRxBw ~250 kHz
-  wr(0x14, 0x08);                   // RegOokPeak: peak, bit-sync off
+  wr(0x14, 0x08);                   // RegOokPeak 0x08 (proven dump value): bit-sync off
   wr(0x15, 0x0F);                   // RegOokFix: low fixed floor
   wr(0x16, 0x12);                   // RegOokAvg: default
+
+  // CRITICAL: bypass the packet engine so DIO2 emits the RAW OOK bitstream.
+  // Without DataMode=continuous the packet handler GATES DIO2 and nothing comes
+  // out — this was the real "no capture" root cause (PR #16 fixed it in
+  // src/radio/sx1278_ook.cpp; this probe must do the same).
+  wr(0x1F, 0x00);                   // RegPreambleDetect: off
+  wr(0x27, 0x00);                   // RegSyncConfig: sync word off
+  wr(0x30, 0x00);                   // RegPacketConfig1: no whitening/CRC/addr
+  wr(0x31, 0x40);                   // RegPacketConfig2: DataMode = continuous
+
   wr(0x40, 0x00); wr(0x41, 0x00);   // DIO mapping (DIO2 = Data in continuous)
 
   wr(0x01, 0x28 | 0x05); delay(5);  // RX continuous (0x2D)
@@ -197,7 +207,8 @@ static void dumpRegs() {
   struct { const char* name; uint8_t addr; } regs[] = {
     {"Version  0x42", 0x42}, {"OpMode   0x01", 0x01}, {"Lna      0x0C", 0x0C},
     {"RxConfig 0x0D", 0x0D}, {"RxBw     0x12", 0x12}, {"OokPeak  0x14", 0x14},
-    {"OokFix   0x15", 0x15}, {"OokAvg   0x16", 0x16}, {"DioMap1  0x40", 0x40},
+    {"OokFix   0x15", 0x15}, {"OokAvg   0x16", 0x16},
+    {"PktCfg2  0x31", 0x31}, {"DioMap1  0x40", 0x40},
   };
   SPI.beginTransaction(SPISettings(8000000, MSBFIRST, SPI_MODE0));
   Serial.println("--- SX1278 live registers ---");
