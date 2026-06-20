@@ -75,6 +75,8 @@ static uint32_t g_frame_count = 0;
 void setup() {
   Serial.begin(115200);
   delay(500);
+  Serial.println("\n=== PulseTape (main sketch) ===");
+  Serial.println("build " __DATE__ " " __TIME__ " | board " BOARD_NAME);
 
 #if USE_SX1278_FRONTEND
   bool sx_ok = sx1278_ook_begin(SX1276_SCK, SX1276_MISO, SX1276_MOSI,
@@ -164,6 +166,8 @@ static FrameAssembler g_assembler(g_cfg, FRAME_GAP_US, queue_sink, &g_queue);
 // ---- Core 0 ----
 void setup() {
   Serial.begin(115200);
+  Serial.println("\n=== PulseTape (main sketch) ===");
+  Serial.println("build " __DATE__ " " __TIME__ " | board " BOARD_NAME);
   queue_init(&g_queue, sizeof(RawTelegram), QUEUE_DEPTH);
   g_queue_ready = true;
 }
