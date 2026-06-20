@@ -6,7 +6,12 @@ shows raw truth, to bisect "radio/hardware vs PulseTape pipeline" problems.
 
 It mirrors the proven SX1278 OOK register init from `src/radio/sx1278_ook.cpp`.
 **Flash once, then drive it over the serial monitor** — no recompiling to switch
-pins or modes. Type `?` for the menu:
+pins or modes. Results also render on the **onboard OLED** (mode + RX pin, the
+per-pin edge counts in scan mode, frame # / item count / first timings in dump
+mode), so you can read the probe without a serial monitor. (Needs Adafruit
+SSD1306 + GFX; set `USE_OLED 0` in the sketch for a bare serial-only build.)
+
+Type `?` for the menu:
 
 ```
   s      pin-scan mode (find the data pin; hold a 433 remote)
