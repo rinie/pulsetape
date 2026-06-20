@@ -25,7 +25,7 @@ static const uint8_t REG_OOK_AVG      = 0x16;
 static const uint8_t REG_PREAMBLE_DETECT  = 0x1F;  // bit7=PreambleDetectorOn
 static const uint8_t REG_SYNC_CONFIG      = 0x27;  // bit4=SyncOn
 static const uint8_t REG_PACKET_CONFIG_1  = 0x30;  // bit7=PacketFormat, bit4-3=CRC
-static const uint8_t REG_PACKET_CONFIG_2  = 0x31;  // bit6=DataMode: 0=packet, 1=continuous
+static const uint8_t REG_PACKET_CONFIG_2  = 0x31;  // bit6=DataMode: 0=continuous, 1=packet
 static const uint8_t REG_DIO_MAPPING1 = 0x40;
 static const uint8_t REG_DIO_MAPPING2 = 0x41;
 static const uint8_t REG_VERSION      = 0x42;
@@ -136,9 +136,12 @@ bool sx1278_ook_begin(uint8_t sck, uint8_t miso, uint8_t mosi,
   writeReg(REG_PREAMBLE_DETECT,  0x00);  // preamble detector off
   writeReg(REG_SYNC_CONFIG,      0x00);  // sync word off
   writeReg(REG_PACKET_CONFIG_1,  0x00);  // variable len off, no whitening, no CRC, no address filter
-  // Switch to continuous data mode: RegPacketConfig2 bit 6 = DataMode=1.
-  // Without this, DIO2 outputs packet-mode data, not the raw OOK bitstream.
-  writeReg(REG_PACKET_CONFIG_2, 0x40);
+  // Continuous data mode: RegPacketConfig2 bit6 DataMode = 0 (0=continuous,
+  // 1=packet; reset default is 0x40=packet). Must be CLEARED, or the packet
+  // engine gates DIO2 and no raw OOK bitstream comes out. The known-good
+  // rtl_433_ESP dump shows RegPacketConfig2 = 0x00. (A previous 0x40 here left
+  // the chip in packet mode → zero edges on every pin.)
+  writeReg(REG_PACKET_CONFIG_2, 0x00);
 
   // DIO2 = DATA in continuous mode (mapping 00 in RegDioMapping1 bits[3:2]).
   writeReg(REG_DIO_MAPPING1, 0x00);
