@@ -7,6 +7,50 @@ void PulseSpaceIndex::reset() {
   nibble_count_ = 0;
 }
 
+void PulseSpaceIndex::normalize() {
+  if (bucket_count_ < 2) return;
+
+  // order[k] = old index of the k-th shortest bucket (insertion sort; <=15 buckets).
+  uint8_t order[PSI_MICRO_ELEMENTS];
+  for (uint8_t i = 0; i < bucket_count_; i++) order[i] = i;
+  for (uint8_t i = 1; i < bucket_count_; i++) {
+    uint8_t key = order[i];
+    int8_t j = (int8_t)i - 1;
+    while (j >= 0 && micro_min_[order[j]] > micro_min_[key]) {
+      order[j + 1] = order[j];
+      j--;
+    }
+    order[j + 1] = key;
+  }
+
+  // remap[oldIndex] = newRank. Ranks are < bucket_count_ <= 15, so never collide
+  // with PSI_OVERFLOW (0x0F).
+  uint8_t remap[PSI_MICRO_ELEMENTS];
+  for (uint8_t k = 0; k < bucket_count_; k++) remap[order[k]] = k;
+
+  // Rewrite the nibble string through the ranking (skip the overflow class).
+  for (uint16_t i = 0; i < nibble_count_; i++) {
+    uint8_t b = nibbles_[i];
+    uint8_t p = (b >> 4) & 0x0F;
+    uint8_t s = b & 0x0F;
+    if (p != PSI_OVERFLOW) p = remap[p];
+    if (s != PSI_OVERFLOW) s = remap[s];
+    nibbles_[i] = (uint8_t)((p << 4) | s);
+  }
+
+  // Reorder the bucket windows to match, so bucketMin(0) is the shortest class.
+  uint16_t tmin[PSI_MICRO_ELEMENTS];
+  uint16_t tmax[PSI_MICRO_ELEMENTS];
+  for (uint8_t k = 0; k < bucket_count_; k++) {
+    tmin[k] = micro_min_[order[k]];
+    tmax[k] = micro_max_[order[k]];
+  }
+  for (uint8_t k = 0; k < bucket_count_; k++) {
+    micro_min_[k] = tmin[k];
+    micro_max_[k] = tmax[k];
+  }
+}
+
 // Tolerance windows from NodoDueRkr: wider as durations grow, because absolute
 // jitter scales roughly with the period. A value within `tolerance` of an
 // existing bucket edge is folded into that bucket rather than spawning a new one.
