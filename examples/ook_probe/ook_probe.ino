@@ -340,6 +340,7 @@ void setup() {
   Serial.begin(115200);
   delay(500);
   Serial.println("\n== PulseTape OOK hardware probe (interactive) ==");
+  Serial.println("build " __DATE__ " " __TIME__);
   oledBegin();
   printConfig();
   Serial.print("SX1278 init: ");
