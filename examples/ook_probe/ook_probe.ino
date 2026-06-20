@@ -100,6 +100,46 @@ static bool sx_init() {
   return true;
 }
 
+// ----------------- config + live-register logging (verify working conditions) ---
+static void printConfig() {
+  Serial.println("--- config ---");
+  Serial.print("SPI: SCK="); Serial.print(PIN_SCK);
+  Serial.print(" MISO=");    Serial.print(PIN_MISO);
+  Serial.print(" MOSI=");    Serial.print(PIN_MOSI);
+  Serial.print(" NSS=");     Serial.print(PIN_NSS);
+  Serial.print(" RST=");     Serial.println(PIN_RST);
+  Serial.print("freq Hz = "); Serial.println(RF_FREQ_HZ);
+#if PROBE_MODE == PROBE_MODE_RMTDUMP
+  Serial.print("mode = RMTDUMP, RX pin = GPIO"); Serial.println(PROBE_RX_PIN);
+  Serial.println("RMT: clk_div=80 (1us/tick), filter_ticks=50, idle=8000us");
+#else
+  Serial.print("mode = PINSCAN, scan pins =");
+  for (int i = 0; i < kNumScan; i++) { Serial.print(" GPIO"); Serial.print(kScanPins[i]); }
+  Serial.println();
+#endif
+  Serial.println("--------------");
+}
+
+// Read back the live SX1278 registers so the log records the exact radio state
+// that produced the result (compare against a known-good dump).
+static void dumpRegs() {
+  struct { const char* name; uint8_t addr; } regs[] = {
+    {"Version  0x42", 0x42}, {"OpMode   0x01", 0x01}, {"Lna      0x0C", 0x0C},
+    {"RxConfig 0x0D", 0x0D}, {"RxBw     0x12", 0x12}, {"OokPeak  0x14", 0x14},
+    {"OokFix   0x15", 0x15}, {"OokAvg   0x16", 0x16}, {"DioMap1  0x40", 0x40},
+  };
+  SPI.beginTransaction(SPISettings(8000000, MSBFIRST, SPI_MODE0));
+  Serial.println("--- SX1278 live registers ---");
+  for (auto& r : regs) {
+    uint8_t v = rd(r.addr);
+    Serial.print("  "); Serial.print(r.name); Serial.print(" = 0x");
+    if (v < 0x10) Serial.print('0');
+    Serial.println(v, HEX);
+  }
+  SPI.endTransaction();
+  Serial.println("-----------------------------");
+}
+
 // ----------------- pin scan (no assumption about the data pin) -------------------
 static void pinScan(uint32_t window_ms) {
   for (int i = 0; i < kNumScan; i++) pinMode(kScanPins[i], INPUT);
@@ -153,8 +193,11 @@ void setup() {
   Serial.begin(115200);
   delay(500);
   Serial.println("\n== PulseTape OOK hardware probe ==");
+  printConfig();
   Serial.print("SX1278 init: ");
-  Serial.println(sx_init() ? "OK" : "FAILED (check SPI wiring / RST pin)");
+  bool ok = sx_init();
+  Serial.println(ok ? "OK" : "FAILED (check SPI wiring / RST pin)");
+  if (ok) dumpRegs();
 #if PROBE_MODE == PROBE_MODE_RMTDUMP
   rmtStart(PROBE_RX_PIN);
   Serial.print("RMT dump mode on GPIO"); Serial.println(PROBE_RX_PIN);

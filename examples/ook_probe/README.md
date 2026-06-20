@@ -7,6 +7,28 @@ shows raw truth, to bisect "radio/hardware vs PulseTape pipeline" problems.
 It mirrors the proven SX1278 OOK register init from `src/radio/sx1278_ook.cpp`,
 then runs in one of two modes (compile-time `PROBE_MODE`).
 
+At boot it logs the **exact working conditions** — SPI/RST pins, frequency, mode,
+and a read-back of the live SX1278 registers (Version, OpMode, Lna, RxConfig,
+RxBw, OokPeak, OokFix, OokAvg, DioMap1) — so any capture in the log is paired with
+the precise config that produced it (compare against a known-good dump):
+
+```
+--- config ---
+SPI: SCK=5 MISO=19 MOSI=27 NSS=18 RST=23
+freq Hz = 433920000
+mode = PINSCAN, scan pins = GPIO26 GPIO32 GPIO33 GPIO34 GPIO35 GPIO39
+--------------
+SX1278 init: OK
+--- SX1278 live registers ---
+  Version  0x42 = 0x12
+  OpMode   0x01 = 0x2D
+  RxBw     0x12 = 0x01
+  OokPeak  0x14 = 0x08
+  OokFix   0x15 = 0x0F
+  ...
+-----------------------------
+```
+
 ## Step 1 — find the data pin (PROBE_MODE_PINSCAN)
 
 Default mode. Flash, open serial @ 115200, and **hold a 433 MHz OOK remote** during
