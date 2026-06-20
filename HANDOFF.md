@@ -31,28 +31,28 @@ app (.ino) → board (pins) → capture backend → generic core
 The `.ino` selects backend + threading by `ARDUINO_ARCH_*`; `board.h` defaults the
 board to match the architecture.
 
-## ⚠️ Status: NOTHING is compiled or hardware-tested yet
+## Status: ESP32/T3 capture VALIDATED on hardware (2026-06-20)
 
-No toolchain was available on the authoring machine. Treat all firmware as a
-scaffold. Specifically unverified:
-- **`src/capture/rmt/rmt_capture.cpp`** — assumes the ESP-IDF v5 RMT RX driver
-  (`driver/rmt_rx.h`), i.e. **arduino-esp32 3.x**. Will not compile on 2.x.
-- **`src/radio/sx1278_ook.cpp`** — bare-SPI SX1278 OOK init; register values are
-  datasheet-derived (RxBw ~125 kHz, ~1.2 kbps, peak threshold + fixed floor).
-  Converge with rtl_433_ESP / OOKwiz but are untuned for your unit.
-- **`src/capture/pio/pulse_capture.pio.h`** — hand-assembled (no pioasm available);
-  regenerate per `tools/build_pio.md`.
-- Pin map for the T3 V1.6.1 varies by revision (esp. SX1276 RST 14 vs 23, OLED I2C)
-  — verify against your board. DIO2→GPIO32 is solid.
+End-to-end working on the LilyGO T3 V1.6.1: SX1278 OOK → **RMT → FrameAssembler →
+psNibbleIndex → RepeatDetector** → serial/OLED/LED. Confirmed receiving and
+fingerprinting **old KAKU, NewKAKU, and Sonoff 433** with stable nibble strings
+across repeats — see `validation.md`. The capture/quantise/repeat core is proven.
 
-## Toolchain (ESP32 / the T3)
+Still standing:
+- **RP2040 / SenseCAP path is unbuilt/untested.** `src/capture/pio/pulse_capture.pio.h`
+  is hand-assembled — regenerate with pioasm (`tools/build_pio.md`) before trusting it.
+- The app **forwards on every repeat** (debug behaviour) — see `validation.md`
+  next-steps #1 (one event per telegram) before wiring a downstream consumer.
 
-- **Arduino IDE 2.x**: install **esp32 by Espressif 3.x** (Boards Manager). Board
-  *TTGO LoRa32-OLED* or *ESP32 Dev Module* (pins come from `board.h`). Upload over
-  USB @ 115200. Windows: install the **CH9102** USB driver if no COM port appears.
-- **PlatformIO**: the `lilygo_t3_v161` env uses `platform = espressif32`, but stock
-  espressif32 pulls arduino-esp32 **2.x** → RMT backend won't build. Use the
-  **pioarduino** platform fork to get 3.x. (TODO: pin this in `platformio.ini`.)
+## Toolchain (ESP32 / the T3) — as actually built
+
+- **Board:** `ttgo-lora32-v21new` (PlatformIO) or a TTGO LoRa32 board in Arduino IDE.
+  It MUST define the `LORA_*` pin macros (the board header sources pins from the
+  variant) — a generic "ESP32 Dev Module" will not compile.
+- **Core:** arduino-esp32 **2.x** (ESP-IDF v4); the RMT backend uses the legacy
+  `driver/rmt.h` API. PlatformIO env: `platform = espressif32@^6.6.0`.
+- Upload over USB @ 115200. Windows: install the **CH9102** USB driver if no COM
+  port appears.
 
 ## First bring-up checks (in order)
 
@@ -65,7 +65,7 @@ scaffold. Specifically unverified:
 4. **Validation**: the **nibbles string is stable across repeats** and `repeats>=2`
    before a line is emitted — that stability is the validation.
 5. If reception is weak/noisy: tune `RegRxBw`, the OOK fixed floor (`RegOokFix`,
-   ~0x5A), and `FRAME_GAP_US` against real captures.
+   `0x0F` — the validated value), and `FRAME_GAP_US` against real captures.
 
 ## Deferred decisions (don't silently change; tune on hardware)
 
