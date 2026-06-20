@@ -7,6 +7,7 @@ void FrameAssembler::resetFrame() {
   current_.count = 0;
   current_.nibble_count = 0;
   current_.repeat_count = 0;
+  current_.forwarded = 0;
   current_.rssi = -1;  // SRX882S has no RSSI
   psi_.reset();
   have_pending_ = false;
@@ -15,7 +16,10 @@ void FrameAssembler::resetFrame() {
 
 void FrameAssembler::finalizeFrame(uint32_t now_ms) {
   if (current_.count >= cfg_.min_pulses) {
-    // Snapshot the nibble fingerprint built incrementally during the frame.
+    // Rank timing classes by duration (0 = shortest) so the fingerprint is
+    // canonical, then snapshot it. Both this frame and the ring entries are
+    // normalized, so repeat-matching compares like with like.
+    psi_.normalize();
     current_.nibble_count = psi_.nibbleCount();
     memcpy(current_.nibbles, psi_.nibbles(), current_.nibble_count);
     current_.timestamp_ms = now_ms;

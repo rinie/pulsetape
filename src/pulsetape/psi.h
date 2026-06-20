@@ -37,6 +37,14 @@ class PulseSpaceIndex {
   // Once the nibble string is full, further pairs are quantised but not stored.
   uint8_t addPair(uint16_t pulse_us, uint16_t space_us);
 
+  // Re-rank timing classes by ascending duration (class 0 = shortest) and rewrite
+  // the whole nibble string through that ranking. Call once after the last
+  // addPair(), before reading the nibbles. This makes the fingerprint canonical
+  // and independent of the order classes were discovered in — so two captures of
+  // the same telegram match even if one started mid-frame or on a glitch. The
+  // overflow class (PSI_OVERFLOW) is left unchanged.
+  void normalize();
+
   // Number of nibble bytes accumulated (== number of pulse/space pairs stored).
   uint16_t nibbleCount() const { return nibble_count_; }
 

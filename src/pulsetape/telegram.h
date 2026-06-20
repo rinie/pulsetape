@@ -27,6 +27,7 @@ struct RawTelegram {
   uint32_t timestamp_ms;                 // capture time (caller-supplied clock)
   int8_t   rssi;                         // -dBm if available, else -1
   uint8_t  repeat_count;                 // times this fingerprint was seen
+  uint8_t  forwarded;                    // 1 once emitted (suppresses further repeats)
 
   uint8_t  nibbles[PSI_MAX_NIBBLES];     // repeat fingerprint (from PulseSpaceIndex)
   uint16_t nibble_count;
@@ -51,12 +52,16 @@ bool telegram_valid(const RawTelegram& t, const TelegramConfig& cfg);
 class RepeatDetector {
  public:
   RepeatDetector() : head_(0) {
-    for (uint8_t i = 0; i < REPEAT_RING_SIZE; i++) ring_[i].nibble_count = 0;
+    for (uint8_t i = 0; i < REPEAT_RING_SIZE; i++) {
+      ring_[i].nibble_count = 0;
+      ring_[i].forwarded = 0;
+    }
   }
 
   // Offer a freshly captured telegram. Updates repeat_count (on t and in the
-  // ring) and returns true when the telegram should be forwarded downstream
-  // (i.e. its repeat_count has reached cfg.repeat_min_count).
+  // ring) and returns true EXACTLY ONCE per telegram — when its repeat_count
+  // first reaches cfg.repeat_min_count. Further repeats inside the window return
+  // false (already forwarded); a fresh occurrence after the window forwards again.
   bool offer(RawTelegram& t, const TelegramConfig& cfg, uint32_t now_ms);
 
  private:

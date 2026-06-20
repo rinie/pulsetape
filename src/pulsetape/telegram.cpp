@@ -55,7 +55,13 @@ bool RepeatDetector::offer(RawTelegram& t, const TelegramConfig& cfg, uint32_t n
     existing->repeat_count++;
     existing->timestamp_ms = now_ms;
     t.repeat_count = existing->repeat_count;
-    return existing->repeat_count >= cfg.repeat_min_count;
+    // Forward exactly once: the first time we reach the threshold and haven't
+    // forwarded this telegram yet. Later repeats in the window stay silent.
+    if (!existing->forwarded && existing->repeat_count >= cfg.repeat_min_count) {
+      existing->forwarded = 1;
+      return true;
+    }
+    return false;
   }
 
   // New fingerprint: store it in the ring.
@@ -66,6 +72,8 @@ bool RepeatDetector::offer(RawTelegram& t, const TelegramConfig& cfg, uint32_t n
   slot->timestamp_ms = now_ms;
   t.repeat_count = 1;
 
-  // Forward singles only if a single sighting already meets the threshold.
-  return cfg.repeat_min_count <= 1;
+  // Forward immediately only if a single sighting already meets the threshold.
+  bool forward_now = (cfg.repeat_min_count <= 1);
+  slot->forwarded = forward_now ? 1 : 0;
+  return forward_now;
 }
