@@ -1,36 +1,41 @@
 // examples/ook_probe/ook_probe.ino
 //
-// Standalone HARDWARE PROBE for the LilyGO T3 V1.6.1 (ESP32 + SX1278). It is NOT
-// part of the PulseTape pipeline — no FrameAssembler, no generic core. It exists
-// to show raw truth and settle two questions empirically:
+// Standalone, INTERACTIVE hardware probe for the LilyGO T3 V1.6.1 (ESP32 + SX1278).
+// NOT part of the PulseTape pipeline — no FrameAssembler, no generic core. It shows
+// raw truth to bisect "radio/hardware vs PulseTape pipeline" problems.
 //
-//   PROBE_MODE_PINSCAN  — which GPIO actually toggles when a 433 OOK remote fires
-//                         (makes NO assumption; it measures every candidate pin)
-//   PROBE_MODE_RMTDUMP  — raw RMT pulse timings on PROBE_RX_PIN, so you can compare
-//                         to a known KAKU capture (~260 us short / ~1280 us long)
+// One build — drive it over the serial monitor (115200), no recompiling to switch
+// pins or modes. Type '?' for the command menu. Results also show on the OLED, so
+// you can read them without a serial monitor. Two modes:
+//   pin-scan  — which GPIO actually toggles when a 433 OOK remote fires (no
+//               assumption; measures every candidate pin)
+//   RMT dump  — raw pulse timings on the selected pin (compare to a KAKU capture:
+//               ~260 us short / ~1280 us long)
 //
-// Self-contained: the SX1278 OOK init below mirrors the register values in
-// src/radio/sx1278_ook.cpp (themselves taken from a known-good on-device dump).
-// MIT (our own code); no rtl_433_ESP / OOKwiz / RadioLib involved.
+// Self-contained: the SX1278 OOK init mirrors src/radio/sx1278_ook.cpp (values from
+// a known-good on-device dump). MIT; no rtl_433_ESP / OOKwiz / RadioLib.
 //
-// Usage:
-//   1. Flash with PROBE_MODE = PROBE_MODE_PINSCAN. Open serial @ 115200, hold a
-//      433 remote. The GPIO with a large edge count IS the data pin.
-//   2. Set PROBE_RX_PIN to that pin, PROBE_MODE = PROBE_MODE_RMTDUMP, reflash.
-//      Each remote press should print a FRAME line of raw durations.
-//
-// Interpreting results:
-//   - "SX1278 init: FAILED"            -> SPI wiring / pins (RegVersion != 0x12).
-//   - init OK but NO pin shows edges    -> radio not demodulating: antenna,
-//                                          frequency, or settings — go validate
-//                                          with rtl_433_ESP @ test (esp32_lilygo1).
-//   - a pin shows edges but RMT dump is empty -> RMT config / wrong PROBE_RX_PIN.
-//   - FRAME timings look like ~260/1280 -> hardware + radio + capture all good;
-//                                          any PulseTape issue is downstream.
+// USE_OLED needs Adafruit SSD1306 + Adafruit GFX (already used by the main app).
+// Set USE_OLED 0 for a bare serial-only build with no extra libraries.
 
 #include <Arduino.h>
 #include <SPI.h>
 #include "driver/rmt.h"
+
+#define USE_OLED 1
+
+#if USE_OLED
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+// Hard-coded to avoid the pins_arduino.h SDA/SCL macro battle (V1.0 map is wrong
+// for the V1.6.1). Confirmed: SDA=21, SCL=22, addr 0x3C, no reset pin.
+#define OLED_SDA 21
+#define OLED_SCL 22
+#define OLED_ADDR 0x3C
+static Adafruit_SSD1306 oled(128, 64, &Wire, -1);
+static bool g_oledOk = false;
+#endif
 
 // ---- T3 V1.6.1 SX1278 SPI/control pins ----
 #define PIN_SCK   5
@@ -40,17 +45,19 @@
 #define PIN_RST   23          // some revisions 14 — verify if init fails
 #define RF_FREQ_HZ 433920000UL
 
-// ---- probe configuration ----
-#define PROBE_MODE_PINSCAN 0
-#define PROBE_MODE_RMTDUMP 1
-#define PROBE_MODE PROBE_MODE_PINSCAN   // <-- switch to PROBE_MODE_RMTDUMP after the scan
-#define PROBE_RX_PIN 35                 // <-- set to the pin the scan reports as active
-
 // Candidate data pins to scan (DIO0/1/2 area + the 34/35/39 input-only pins).
 static const int kScanPins[] = {26, 32, 33, 34, 35, 39};
 static const int kNumScan = sizeof(kScanPins) / sizeof(kScanPins[0]);
 
-// ----------------- SX1278 minimal OOK init (mirrors src/radio/sx1278_ook.cpp) ----
+// ---- runtime state (changed live via serial) ----
+enum Mode { MODE_PINSCAN, MODE_RMTDUMP };
+static Mode     g_mode  = MODE_PINSCAN;
+static int      g_rxPin = 35;       // default guess; change with keys 1..6
+static bool     g_rmtOn = false;
+static uint32_t g_frames = 0;
+static RingbufHandle_t rb = nullptr;
+
+// ----------------- SX1278 SPI helpers + OOK init (mirrors src/radio/sx1278_ook.cpp)
 static void wr(uint8_t reg, uint8_t val) {
   digitalWrite(PIN_NSS, LOW);
   SPI.transfer(reg | 0x80);
@@ -100,6 +107,75 @@ static bool sx_init() {
   return true;
 }
 
+// ----------------- OLED helpers (no-ops if USE_OLED == 0) ------------------------
+static void oledBegin() {
+#if USE_OLED
+  Wire.begin(OLED_SDA, OLED_SCL);
+  g_oledOk = oled.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR);
+  if (g_oledOk) {
+    oled.clearDisplay();
+    oled.setTextSize(1);
+    oled.setTextColor(SSD1306_WHITE);
+    oled.setCursor(0, 0);
+    oled.println("OOK probe");
+    oled.display();
+  }
+#endif
+}
+
+// Header line shown on every screen: mode + selected pin.
+static void oledHeader() {
+#if USE_OLED
+  oled.setCursor(0, 0);
+  oled.print(g_mode == MODE_PINSCAN ? "SCAN" : "DUMP");
+  oled.print(" RX GPIO");
+  oled.println(g_rxPin);
+#endif
+}
+
+static void oledScan(const long* edges, int maxIdx) {
+#if USE_OLED
+  if (!g_oledOk) return;
+  oled.clearDisplay();
+  oledHeader();
+  for (int i = 0; i < kNumScan; i++) {
+    oled.print("GPIO"); oled.print(kScanPins[i]);
+    oled.print(' ');    oled.print(edges[i]);
+    if (i == maxIdx && edges[i] > 0) oled.print(" <");
+    oled.println();
+  }
+  oled.display();
+#endif
+}
+
+static void oledFrame(size_t items, const rmt_item32_t* it) {
+#if USE_OLED
+  if (!g_oledOk) return;
+  oled.clearDisplay();
+  oledHeader();
+  oled.print("frame #"); oled.println(g_frames);
+  oled.print("items ");  oled.println(items);
+  // first few durations (interleaved hi/lo), wrapped by the GFX cursor
+  size_t shown = items < 6 ? items : 6;
+  for (size_t i = 0; i < shown; i++) {
+    oled.print(it[i].duration0); oled.print(',');
+    oled.print(it[i].duration1); oled.print(' ');
+  }
+  oled.display();
+#endif
+}
+
+static void oledStatus(const char* l1, const char* l2) {
+#if USE_OLED
+  if (!g_oledOk) return;
+  oled.clearDisplay();
+  oledHeader();
+  oled.println(l1);
+  if (l2) oled.println(l2);
+  oled.display();
+#endif
+}
+
 // ----------------- config + live-register logging (verify working conditions) ---
 static void printConfig() {
   Serial.println("--- config ---");
@@ -109,14 +185,9 @@ static void printConfig() {
   Serial.print(" NSS=");     Serial.print(PIN_NSS);
   Serial.print(" RST=");     Serial.println(PIN_RST);
   Serial.print("freq Hz = "); Serial.println(RF_FREQ_HZ);
-#if PROBE_MODE == PROBE_MODE_RMTDUMP
-  Serial.print("mode = RMTDUMP, RX pin = GPIO"); Serial.println(PROBE_RX_PIN);
-  Serial.println("RMT: clk_div=80 (1us/tick), filter_ticks=50, idle=8000us");
-#else
-  Serial.print("mode = PINSCAN, scan pins =");
+  Serial.print("scan pins =");
   for (int i = 0; i < kNumScan; i++) { Serial.print(" GPIO"); Serial.print(kScanPins[i]); }
   Serial.println();
-#endif
   Serial.println("--------------");
 }
 
@@ -140,6 +211,22 @@ static void dumpRegs() {
   Serial.println("-----------------------------");
 }
 
+static void printHelp() {
+  Serial.println();
+  Serial.println("=== OOK probe — type a key in the serial monitor ===");
+  Serial.println("  s      pin-scan mode (find the data pin; hold a 433 remote)");
+  Serial.println("  d      RMT-dump mode (raw timings on the selected RX pin)");
+  Serial.println("  1..6   select RX pin: 1=GPIO26 2=GPIO32 3=GPIO33 4=GPIO34 5=GPIO35 6=GPIO39");
+  Serial.println("  g      print live SX1278 registers");
+  Serial.println("  i      re-init the radio");
+  Serial.println("  R      reboot the ESP32");
+  Serial.println("  ?      this help");
+  Serial.print("current: mode=");
+  Serial.print(g_mode == MODE_PINSCAN ? "PINSCAN" : "RMTDUMP");
+  Serial.print(", RX pin=GPIO"); Serial.println(g_rxPin);
+  Serial.println("====================================================");
+}
+
 // ----------------- pin scan (no assumption about the data pin) -------------------
 static void pinScan(uint32_t window_ms) {
   for (int i = 0; i < kNumScan; i++) pinMode(kScanPins[i], INPUT);
@@ -154,16 +241,29 @@ static void pinScan(uint32_t window_ms) {
       if (v != last[i]) { edges[i]++; last[i] = v; }
     }
   }
-  Serial.print("edge counts over "); Serial.print(window_ms); Serial.println(" ms:");
+
+  int maxIdx = 0;
+  for (int i = 1; i < kNumScan; i++) if (edges[i] > edges[maxIdx]) maxIdx = i;
+
+  Serial.print("edges over "); Serial.print(window_ms); Serial.print(" ms:");
   for (int i = 0; i < kNumScan; i++) {
     Serial.print("  GPIO"); Serial.print(kScanPins[i]);
-    Serial.print(" = ");    Serial.println(edges[i]);
+    Serial.print("="); Serial.print(edges[i]);
   }
+  Serial.println();
+  oledScan(edges, maxIdx);
 }
 
 // ----------------- RMT raw dump --------------------------------------------------
-static RingbufHandle_t rb = nullptr;
+static void rmtStop() {
+  if (!g_rmtOn) return;
+  rmt_rx_stop(RMT_CHANNEL_0);
+  rmt_driver_uninstall(RMT_CHANNEL_0);
+  rb = nullptr;
+  g_rmtOn = false;
+}
 static void rmtStart(int pin) {
+  rmtStop();
   rmt_config_t c = RMT_DEFAULT_CONFIG_RX((gpio_num_t)pin, RMT_CHANNEL_0);
   c.clk_div = 80;                          // 1 us / tick
   c.rx_config.filter_en = true;
@@ -173,44 +273,82 @@ static void rmtStart(int pin) {
   rmt_driver_install(RMT_CHANNEL_0, 4096, 0);
   rmt_get_ringbuf_handle(RMT_CHANNEL_0, &rb);
   rmt_rx_start(RMT_CHANNEL_0, true);
+  g_rmtOn = true;
+  Serial.print("RMT capturing GPIO"); Serial.println(pin);
 }
 static void rmtDrain() {
   size_t n = 0;
   rmt_item32_t* it = (rmt_item32_t*)xRingbufferReceive(rb, &n, pdMS_TO_TICKS(500));
   if (!it) return;
   size_t count = n / sizeof(rmt_item32_t);
-  Serial.print("FRAME items="); Serial.print(count); Serial.print(" us: ");
+  g_frames++;
+  Serial.print("FRAME #"); Serial.print(g_frames);
+  Serial.print(" items="); Serial.print(count); Serial.print(" us: ");
   for (size_t i = 0; i < count; i++) {
     Serial.print(it[i].duration0); Serial.print(',');
     Serial.print(it[i].duration1);
     if (i + 1 < count) Serial.print(',');
   }
   Serial.println();
+  oledFrame(count, it);
   vRingbufferReturnItem(rb, it);
+}
+
+// ----------------- serial command handling --------------------------------------
+static void setMode(Mode m) {
+  g_mode = m;
+  if (m == MODE_RMTDUMP) {
+    rmtStart(g_rxPin);
+    oledStatus("RMT dump", "waiting for RF");
+  } else {
+    rmtStop();
+    Serial.println("PINSCAN — hold a 433 MHz OOK remote during each window");
+    oledStatus("PIN SCAN", "hold a remote");
+  }
+}
+static void selectPin(int idx) {            // idx 0..kNumScan-1
+  g_rxPin = kScanPins[idx];
+  Serial.print("RX pin -> GPIO"); Serial.println(g_rxPin);
+  if (g_mode == MODE_RMTDUMP) rmtStart(g_rxPin);  // re-arm on the new pin
+}
+static void handleCmd(char c) {
+  switch (c) {
+    case 's': setMode(MODE_PINSCAN); break;
+    case 'd': setMode(MODE_RMTDUMP); break;
+    case 'g': dumpRegs(); break;
+    case 'i': Serial.print("re-init: "); Serial.println(sx_init() ? "OK" : "FAIL"); dumpRegs(); break;
+    case 'R': Serial.println("rebooting..."); delay(100); ESP.restart(); break;
+    case '?': case 'h': printHelp(); break;
+    default:
+      if (c >= '1' && c <= ('0' + kNumScan)) selectPin(c - '1');
+      break;
+  }
 }
 
 void setup() {
   Serial.begin(115200);
   delay(500);
-  Serial.println("\n== PulseTape OOK hardware probe ==");
+  Serial.println("\n== PulseTape OOK hardware probe (interactive) ==");
+  oledBegin();
   printConfig();
   Serial.print("SX1278 init: ");
   bool ok = sx_init();
   Serial.println(ok ? "OK" : "FAILED (check SPI wiring / RST pin)");
+  oledStatus(ok ? "SX1278 OK" : "SX1278 FAIL", ok ? nullptr : "check SPI");
   if (ok) dumpRegs();
-#if PROBE_MODE == PROBE_MODE_RMTDUMP
-  rmtStart(PROBE_RX_PIN);
-  Serial.print("RMT dump mode on GPIO"); Serial.println(PROBE_RX_PIN);
-#else
-  Serial.println("PIN SCAN mode — hold a 433 MHz OOK remote during each scan window");
-#endif
+  printHelp();
+  setMode(MODE_PINSCAN);   // start scanning by default
 }
 
 void loop() {
-#if PROBE_MODE == PROBE_MODE_RMTDUMP
-  rmtDrain();
-#else
-  pinScan(2000);
-  delay(200);
-#endif
+  while (Serial.available()) {
+    char c = (char)Serial.read();
+    if (c == '\n' || c == '\r' || c == ' ') continue;
+    handleCmd(c);
+  }
+  if (g_mode == MODE_PINSCAN) {
+    pinScan(1500);
+  } else if (g_rmtOn) {
+    rmtDrain();
+  }
 }
