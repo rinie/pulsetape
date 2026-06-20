@@ -6,7 +6,11 @@
 //
 // Per-target wiring (selected by the Arduino core's architecture macro):
 //   RP2040 (SenseCAP): PIO capture on core 1 -> queue -> debug print on core 0
-//   ESP32  (LilyGO T3): RMT capture -> assemble -> debug print, single loop()
+//   ESP32  (LilyGO T3): RMT capture -> FrameAssembler -> debug + OLED + LED
+//
+// Board feedback (OLED, LED) is conditional on capability macros from the board
+// header (BOARD_HAS_OLED, ONBOARD_LED), so a different board with neither still
+// builds and runs (serial only).
 
 #include <Arduino.h>
 
@@ -28,49 +32,38 @@ static TelegramConfig g_cfg = {
 // ===================================================================== ESP32
 #if defined(ARDUINO_ARCH_ESP32)
 
-#include "src/app/oled_display.h"
+#include "src/capture/rmt/rmt_capture.h"
 #if USE_SX1278_FRONTEND
 #include "src/radio/sx1278_ook.h"
 #endif
+#if defined(BOARD_HAS_OLED)
+#include "src/app/oled_display.h"
+#endif
 
-// Interrupt-based OOK pulse capture — mirrors the approach used by rtl_433_ESP:
-//   CHANGE interrupt on DIO2 (GPIO32), measure HIGH/LOW durations in µs.
-//   HIGH period = carrier present (pulse), LOW period = carrier absent (gap).
-//   Frame detection: silence > FRAME_GAP_US after at least MIN_PULSES pairs.
+// RMT captures the DIO2 edge train in hardware; FrameAssembler runs the generic
+// core (psNibbleIndex + telegram filter + repeat detection). RMT + its ISR do the
+// timing, so a single loop() on one core is enough.
+static RmtCapture g_capture;
 
-#define PULSE_BUF_SIZE 256
+#ifdef ONBOARD_LED
+static const uint32_t LED_BLINK_MS = 40;
+static uint32_t g_led_off_at = 0;   // millis() deadline to switch the LED back off
+#endif
 
-static volatile uint16_t g_pulse[PULSE_BUF_SIZE];   // HIGH durations (µs)
-static volatile uint16_t g_gap[PULSE_BUF_SIZE];     // LOW durations (µs)
-static volatile int16_t  g_nrpulses   = 0;
-static volatile unsigned long g_lastChange = 0;
-
-static void IRAM_ATTR onDataEdge() {
-  unsigned long now = micros();
-  unsigned long dur = now - g_lastChange;
-
-  if (dur < PULSE_MIN_US) return;   // discard sub-50 µs glitches
-  g_lastChange = now;
-
-  // After the edge, digitalRead gives the new level.
-  // LOW  now → a HIGH period (pulse) just ended.
-  // HIGH now → a LOW period  (gap)   just ended.
-  // This is the same convention as rtl_433_ESP::interruptHandler().
-  bool level = (bool)digitalRead(RF_DATA_PIN);
-  int16_t n = g_nrpulses;
-
-  if (!level) {                      // pulse ended
-    if (n < PULSE_BUF_SIZE)
-      g_pulse[n] = (uint16_t)(dur < 65535u ? dur : 65535u);
-  } else {                           // gap ended — only count if a pulse preceded it
-    if (n < PULSE_BUF_SIZE && g_pulse[n] > 0) {
-      g_gap[n]   = (uint16_t)(dur < 65535u ? dur : 65535u);
-      g_nrpulses = n + 1;
-    }
-  }
+// Sink: invoked for each telegram that passed repeat validation. Surface it on
+// every output the board offers — serial always, OLED + LED when the board has them.
+static void telegram_sink(const RawTelegram& t, void*) {
+  debug_print_telegram(t);
+#if defined(BOARD_HAS_OLED)
+  oled_show_telegram(t);
+#endif
+#ifdef ONBOARD_LED
+  digitalWrite(ONBOARD_LED, HIGH);
+  g_led_off_at = millis() + LED_BLINK_MS;
+#endif
 }
 
-static uint32_t g_frame_count = 0;
+static FrameAssembler g_assembler(g_cfg, FRAME_GAP_US, telegram_sink, nullptr);
 
 void setup() {
   Serial.begin(115200);
@@ -80,68 +73,39 @@ void setup() {
 
 #if USE_SX1278_FRONTEND
   bool sx_ok = sx1278_ook_begin(SX1276_SCK, SX1276_MISO, SX1276_MOSI,
-                                 SX1276_NSS, SX1276_RST, RF_FREQUENCY_HZ);
+                                SX1276_NSS, SX1276_RST, RF_FREQUENCY_HZ);
   Serial.print("SX1278 init: ");
   Serial.println(sx_ok ? "OK" : "FAILED (check SPI wiring)");
 #else
   bool sx_ok = false;
 #endif
 
+#if defined(BOARD_HAS_OLED)
   oled_begin(sx_ok);
+#else
+  (void)sx_ok;
+#endif
 
+#ifdef ONBOARD_LED
   pinMode(ONBOARD_LED, OUTPUT);
   digitalWrite(ONBOARD_LED, LOW);
+#endif
 
-  g_lastChange = micros();
-  pinMode(RF_DATA_PIN, INPUT);
-  attachInterrupt(digitalPinToInterrupt(RF_DATA_PIN), onDataEdge, CHANGE);
-
-  Serial.print("Listening on GPIO"); Serial.print(RF_DATA_PIN);
-  Serial.println(" (DIO2 / SX1278 OOK bitstream)");
+  g_capture.begin(RF_DATA_PIN);
+  Serial.print("RMT capture on GPIO"); Serial.print(RF_DATA_PIN);
+  Serial.println(" -> FrameAssembler (psNibbleIndex + repeat detection)");
 }
 
 void loop() {
-  int16_t n = g_nrpulses;                     // one volatile read — safe snapshot
-  unsigned long last = g_lastChange;
+  CaptureEvent ev = g_capture.next();   // bounded-blocking read of the RMT ring buffer
+  g_assembler.onEvent(ev, millis());
 
-  if (n >= MIN_PULSES && (micros() - last) > FRAME_GAP_US) {
-    // Frame complete: snapshot under critical section, then reset
-    static uint16_t snapPulse[PULSE_BUF_SIZE];
-    static uint16_t snapGap[PULSE_BUF_SIZE];
-    noInterrupts();
-    int16_t snapN = g_nrpulses;
-    for (int16_t i = 0; i < snapN; i++) {
-      snapPulse[i] = g_pulse[i];
-      snapGap[i]   = g_gap[i];
-    }
-    g_nrpulses = 0;
-    interrupts();
-
-    g_frame_count++;
-    digitalWrite(ONBOARD_LED, HIGH);
-
-#if USE_SX1278_FRONTEND
-    int8_t rssi = -(int8_t)sx1278_rssi();
-#else
-    int8_t rssi = 0;
-#endif
-
-    oled_show_frame((uint16_t)snapN, g_frame_count, rssi);
-
-    Serial.print("FRAME #"); Serial.print(g_frame_count);
-    Serial.print(" pulses="); Serial.print(snapN);
-    Serial.print(" rssi="); Serial.print(rssi); Serial.println("dBm");
-    for (int16_t i = 0; i < snapN; i++) {
-      Serial.print(snapPulse[i]);
-      Serial.print(',');
-      Serial.print(snapGap[i]);
-      if (i + 1 < snapN) Serial.print(' ');
-    }
-    Serial.println();
-
-    delay(30);
+#ifdef ONBOARD_LED
+  if (g_led_off_at != 0 && (int32_t)(millis() - g_led_off_at) >= 0) {
     digitalWrite(ONBOARD_LED, LOW);
+    g_led_off_at = 0;
   }
+#endif
 }
 
 // ==================================================================== RP2040
