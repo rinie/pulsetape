@@ -28,21 +28,26 @@
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
-// Hard-coded to avoid the pins_arduino.h SDA/SCL macro battle (V1.0 map is wrong
-// for the V1.6.1). Confirmed: SDA=21, SCL=22, addr 0x3C, no reset pin.
+// Use the board variant's OLED_SDA/OLED_SCL (ttgo-lora32-v21new gives 21/22);
+// fall back to literals if a different variant doesn't define them.
+#ifndef OLED_SDA
 #define OLED_SDA 21
+#endif
+#ifndef OLED_SCL
 #define OLED_SCL 22
+#endif
 #define OLED_ADDR 0x3C
 static Adafruit_SSD1306 oled(128, 64, &Wire, -1);
 static bool g_oledOk = false;
 #endif
 
-// ---- T3 V1.6.1 SX1278 SPI/control pins ----
-#define PIN_SCK   5
-#define PIN_MISO  19
-#define PIN_MOSI  27
-#define PIN_NSS   18
-#define PIN_RST   23          // some revisions 14 — verify if init fails
+// ---- SX1278 SPI/control pins, from the board variant's pins_arduino.h ----
+// Build board ttgo-lora32-v21new so these resolve to the V1.6.1 pin map.
+#define PIN_SCK   LORA_SCK
+#define PIN_MISO  LORA_MISO
+#define PIN_MOSI  LORA_MOSI
+#define PIN_NSS   LORA_CS
+#define PIN_RST   LORA_RST
 #define RF_FREQ_HZ 433920000UL
 
 // Candidate data pins to scan (DIO0/1/2 area + the 34/35/39 input-only pins).
@@ -52,7 +57,7 @@ static const int kNumScan = sizeof(kScanPins) / sizeof(kScanPins[0]);
 // ---- runtime state (changed live via serial) ----
 enum Mode { MODE_PINSCAN, MODE_RMTDUMP };
 static Mode     g_mode  = MODE_PINSCAN;
-static int      g_rxPin = 32;       // DIO2 on the V1.6.1 (confirmed); change with keys 1..6
+static int      g_rxPin = LORA_D2;  // DIO2 on the V1.6.1; change with keys 1..6
 static bool     g_rmtOn = false;
 static uint32_t g_frames = 0;
 static RingbufHandle_t rb = nullptr;

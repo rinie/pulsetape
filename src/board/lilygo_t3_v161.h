@@ -38,6 +38,14 @@
 #ifndef PULSETAPE_BOARD_LILYGO_T3_V161_H
 #define PULSETAPE_BOARD_LILYGO_T3_V161_H
 
+// Pull in the selected board variant's pins_arduino.h so the LORA_* / LED_BUILTIN
+// macros below resolve. Build with board **ttgo-lora32-v21new** (the V1.6.1 /
+// V2.1.6 variant) — that variant is the single source of truth for the pin map,
+// so building the right board automatically gives the right pins. This header is
+// ESP32-only (included via board.h), so pulling Arduino.h here is fine and does
+// not reach the generic core (src/pulsetape/ never includes board.h).
+#include <Arduino.h>
+
 #define BOARD_NAME "LilyGO TTGO T3 LoRa32 433MHz V1.6.1 (ESP32)"
 
 // --- RF receive source selection ---
@@ -50,7 +58,7 @@
   #define RF_DATA_PIN 36          // external SRX882S DATA
   #define USE_SX1278_FRONTEND 0
 #else
-  #define RF_DATA_PIN 32          // SX1276 DIO2 — GPIO32, per ttgo-lora32-v21new variant
+  #define RF_DATA_PIN LORA_D2     // SX1278 DIO2 (GPIO32 on the v21new variant)
   #define USE_SX1278_FRONTEND 1
 #endif
 
@@ -66,18 +74,25 @@
 #define REPEAT_MIN_COUNT 2
 #define REPEAT_WINDOW_MS 800
 
-// --- Onboard SX1276 (reserved for TX / future FSK; NOT used for OOK RX) ---
-#define SX1276_SCK   5
-#define SX1276_MISO  19
-#define SX1276_MOSI  27
-#define SX1276_NSS   18
-#define SX1276_RST   23   // some revisions 14 — verify
-#define SX1276_DIO0  26
-#define SX1276_DIO1  33
-#define SX1276_DIO2  32          // GPIO32, per ttgo-lora32-v21new variant / LORA_D2
+// --- Onboard SX1276/78 pins, sourced from the board variant's pins_arduino.h ---
+// Single source of truth: the right board gives the right pins, and resolves the
+// old GPIO32-vs-35 / RST-23-vs-14 ambiguities. Used by the OOK front-end
+// (sx1278_ook.cpp); SX1276_DIO2 == RF_DATA_PIN above.
+#define SX1276_SCK   LORA_SCK
+#define SX1276_MISO  LORA_MISO
+#define SX1276_MOSI  LORA_MOSI
+#define SX1276_NSS   LORA_CS
+#define SX1276_RST   LORA_RST
+#define SX1276_DIO0  LORA_IRQ
+#define SX1276_DIO1  LORA_D1
+#define SX1276_DIO2  LORA_D2
 
 // --- Onboard LED ---
-#define ONBOARD_LED 25   // blue LED, active HIGH
+#ifdef LED_BUILTIN
+#define ONBOARD_LED LED_BUILTIN   // blue LED (GPIO25), active HIGH
+#else
+#define ONBOARD_LED 25
+#endif
 
 // --- Onboard SSD1306 OLED ---
 // pins_arduino.h for ttgo-lora32-v1 has SDA=4/SCL=15 (V1.0 pinout) — WRONG

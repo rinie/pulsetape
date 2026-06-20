@@ -72,7 +72,8 @@ any time; `R` reboots.)
 
 ## Build
 
-Arduino IDE: open `ook_probe.ino`, select the board, Upload, open Serial Monitor
+Arduino IDE: open `ook_probe.ino`, select a **TTGO LoRa32** board (it must define
+the `LORA_*` pin macros — a generic "ESP32 Dev Module" won't compile), Upload, open Serial Monitor
 @ 115200 (set line ending to "No line ending" or any — single keys work either
 way). Or PlatformIO:
 `cd examples/ook_probe && pio run -e esp32_lilygo1 -t upload && pio device monitor`.
