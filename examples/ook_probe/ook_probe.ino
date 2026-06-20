@@ -105,7 +105,7 @@ static bool sx_init() {
   wr(0x1F, 0x00);                   // RegPreambleDetect: off
   wr(0x27, 0x00);                   // RegSyncConfig: sync word off
   wr(0x30, 0x00);                   // RegPacketConfig1: no whitening/CRC/addr
-  wr(0x31, 0x40);                   // RegPacketConfig2: DataMode = continuous
+  wr(0x31, 0x00);                   // RegPacketConfig2 DataMode=0 (continuous; 0x40=packet gates DIO2)
 
   wr(0x40, 0x00); wr(0x41, 0x00);   // DIO mapping (DIO2 = Data in continuous)
 
