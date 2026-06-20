@@ -28,75 +28,117 @@ static TelegramConfig g_cfg = {
 // ===================================================================== ESP32
 #if defined(ARDUINO_ARCH_ESP32)
 
-#include "src/capture/rmt/rmt_capture.h"
 #include "src/app/oled_display.h"
 #if USE_SX1278_FRONTEND
 #include "src/radio/sx1278_ook.h"
 #endif
 
-static RmtCapture g_capture;
+// Interrupt-based OOK pulse capture — mirrors the approach used by rtl_433_ESP:
+//   CHANGE interrupt on DIO2 (GPIO32), measure HIGH/LOW durations in µs.
+//   HIGH period = carrier present (pulse), LOW period = carrier absent (gap).
+//   Frame detection: silence > FRAME_GAP_US after at least MIN_PULSES pairs.
 
-// RMT + its ISR do capture in hardware, so a single task is enough: the sink
-// prints to Serial and refreshes the OLED.
-static void print_sink(const RawTelegram& t, void*) {
-  debug_print_telegram(t);
-  oled_show_telegram(t);
+#define PULSE_BUF_SIZE 256
+
+static volatile uint16_t g_pulse[PULSE_BUF_SIZE];   // HIGH durations (µs)
+static volatile uint16_t g_gap[PULSE_BUF_SIZE];     // LOW durations (µs)
+static volatile int16_t  g_nrpulses   = 0;
+static volatile unsigned long g_lastChange = 0;
+
+static void IRAM_ATTR onDataEdge() {
+  unsigned long now = micros();
+  unsigned long dur = now - g_lastChange;
+
+  if (dur < PULSE_MIN_US) return;   // discard sub-50 µs glitches
+  g_lastChange = now;
+
+  // After the edge, digitalRead gives the new level.
+  // LOW  now → a HIGH period (pulse) just ended.
+  // HIGH now → a LOW period  (gap)   just ended.
+  // This is the same convention as rtl_433_ESP::interruptHandler().
+  bool level = (bool)digitalRead(RF_DATA_PIN);
+  int16_t n = g_nrpulses;
+
+  if (!level) {                      // pulse ended
+    if (n < PULSE_BUF_SIZE)
+      g_pulse[n] = (uint16_t)(dur < 65535u ? dur : 65535u);
+  } else {                           // gap ended — only count if a pulse preceded it
+    if (n < PULSE_BUF_SIZE && g_pulse[n] > 0) {
+      g_gap[n]   = (uint16_t)(dur < 65535u ? dur : 65535u);
+      g_nrpulses = n + 1;
+    }
+  }
 }
-static FrameAssembler g_assembler(g_cfg, FRAME_GAP_US, print_sink, nullptr);
+
+static uint32_t g_frame_count = 0;
 
 void setup() {
   Serial.begin(115200);
-  delay(500);  // let the host open the port before first print
+  delay(500);
+
 #if USE_SX1278_FRONTEND
-  bool sx_ok = sx1278_ook_begin(SX1276_SCK, SX1276_MISO, SX1276_MOSI, SX1276_NSS, SX1276_RST,
-                                 RF_FREQUENCY_HZ);
+  bool sx_ok = sx1278_ook_begin(SX1276_SCK, SX1276_MISO, SX1276_MOSI,
+                                 SX1276_NSS, SX1276_RST, RF_FREQUENCY_HZ);
   Serial.print("SX1278 init: ");
   Serial.println(sx_ok ? "OK" : "FAILED (check SPI wiring)");
 #else
   bool sx_ok = false;
 #endif
+
   oled_begin(sx_ok);
-  setup_gpio_scan();
-  g_capture.begin(RF_DATA_PIN);
-  Serial.println("RMT capture started, waiting for RF...");
-}
 
-// GPIO scan: sample DIO candidate pins and print which ones are ever HIGH.
-// This bypasses RMT entirely to check if DIO2 is physically on GPIO32.
-// Candidate pins from V1.x schematics: DIO0=26, DIO1=33, DIO2=32, DIO3=35.
-static const uint8_t kDioPins[] = {26, 32, 33, 34, 35, 39};
-static uint32_t g_pin_high[6] = {};
-static uint32_t g_pulse_count = 0;
-static uint32_t g_last_report_ms = 0;
+  pinMode(ONBOARD_LED, OUTPUT);
+  digitalWrite(ONBOARD_LED, LOW);
 
-void setup_gpio_scan() {
-  for (uint8_t i = 0; i < 6; i++) {
-    pinMode(kDioPins[i], INPUT);
-  }
+  g_lastChange = micros();
+  pinMode(RF_DATA_PIN, INPUT);
+  attachInterrupt(digitalPinToInterrupt(RF_DATA_PIN), onDataEdge, CHANGE);
+
+  Serial.print("Listening on GPIO"); Serial.print(RF_DATA_PIN);
+  Serial.println(" (DIO2 / SX1278 OOK bitstream)");
 }
 
 void loop() {
-  // Sample all candidate DIO pins.
-  for (uint8_t i = 0; i < 6; i++) {
-    if (digitalRead(kDioPins[i])) g_pin_high[i]++;
-  }
+  int16_t n = g_nrpulses;                     // one volatile read — safe snapshot
+  unsigned long last = g_lastChange;
 
-  CaptureEvent ev = g_capture.next();
-  if (ev.type == CaptureEvent::DURATION) g_pulse_count++;
-  g_assembler.onEvent(ev, millis());
+  if (n >= MIN_PULSES && (micros() - last) > FRAME_GAP_US) {
+    // Frame complete: snapshot under critical section, then reset
+    static uint16_t snapPulse[PULSE_BUF_SIZE];
+    static uint16_t snapGap[PULSE_BUF_SIZE];
+    noInterrupts();
+    int16_t snapN = g_nrpulses;
+    for (int16_t i = 0; i < snapN; i++) {
+      snapPulse[i] = g_pulse[i];
+      snapGap[i]   = g_gap[i];
+    }
+    g_nrpulses = 0;
+    interrupts();
 
-  uint32_t now = millis();
-  if (now - g_last_report_ms >= 5000) {
-    Serial.print("rmt_pulses="); Serial.print(g_pulse_count);
-    Serial.print(" gpio:");
-    for (uint8_t i = 0; i < 6; i++) {
-      Serial.print(kDioPins[i]); Serial.print('='); Serial.print(g_pin_high[i]);
-      if (i < 5) Serial.print(',');
+    g_frame_count++;
+    digitalWrite(ONBOARD_LED, HIGH);
+
+#if USE_SX1278_FRONTEND
+    int8_t rssi = -(int8_t)sx1278_rssi();
+#else
+    int8_t rssi = 0;
+#endif
+
+    oled_show_frame((uint16_t)snapN, g_frame_count, rssi);
+
+    Serial.print("FRAME #"); Serial.print(g_frame_count);
+    Serial.print(" pulses="); Serial.print(snapN);
+    Serial.print(" rssi="); Serial.print(rssi); Serial.println("dBm");
+    for (int16_t i = 0; i < snapN; i++) {
+      Serial.print(snapPulse[i]);
+      Serial.print(',');
+      Serial.print(snapGap[i]);
+      if (i + 1 < snapN) Serial.print(' ');
     }
     Serial.println();
-    g_pulse_count = 0;
-    memset(g_pin_high, 0, sizeof(g_pin_high));
-    g_last_report_ms = now;
+
+    delay(30);
+    digitalWrite(ONBOARD_LED, LOW);
   }
 }
 

@@ -59,6 +59,17 @@ void oled_begin(bool sx1278_ok) {
     s_disp.display();
 }
 
+void oled_show_frame(uint16_t pulse_count, uint32_t frame_num, int8_t rssi_dbm) {
+    s_count = frame_num;
+    s_disp.clearDisplay();
+    redraw_header();
+    s_disp.setCursor(0, 16);
+    s_disp.print("pulses: "); s_disp.println(pulse_count);
+    s_disp.setCursor(0, 24);
+    s_disp.print("rssi:   "); s_disp.print(rssi_dbm); s_disp.println(" dBm");
+    s_disp.display();
+}
+
 void oled_show_telegram(const RawTelegram& t) {
     s_count++;
     s_disp.clearDisplay();

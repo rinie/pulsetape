@@ -22,6 +22,10 @@ static const uint8_t REG_RX_BW        = 0x12;
 static const uint8_t REG_OOK_PEAK     = 0x14;
 static const uint8_t REG_OOK_FIX      = 0x15;
 static const uint8_t REG_OOK_AVG      = 0x16;
+static const uint8_t REG_PREAMBLE_DETECT  = 0x1F;  // bit7=PreambleDetectorOn
+static const uint8_t REG_SYNC_CONFIG      = 0x27;  // bit4=SyncOn
+static const uint8_t REG_PACKET_CONFIG_1  = 0x30;  // bit7=PacketFormat, bit4-3=CRC
+static const uint8_t REG_PACKET_CONFIG_2  = 0x31;  // bit6=DataMode: 0=packet, 1=continuous
 static const uint8_t REG_DIO_MAPPING1 = 0x40;
 static const uint8_t REG_DIO_MAPPING2 = 0x41;
 static const uint8_t REG_VERSION      = 0x42;
@@ -114,26 +118,49 @@ bool sx1278_ook_begin(uint8_t sck, uint8_t miso, uint8_t mosi,
   // (rtl_433_ESP found narrower bandwidth dropped signals).
   writeReg(REG_RX_BW, 0x01);
 
-  // RegOokPeak: peak threshold (OokThreshType=01 -> 0x08), BitSyncOn=0 so DIO2
-  // carries the RAW slicer output (required for arbitrary multi-rate OOK).
-  // OokPeakTheshStep = 0.5 dB (bits 2:0 = 000).
+  // RegOokPeak = 0x08: Fixed threshold (OokThreshType[1:0]=00), BitSyncOn=0,
+  // OokPeakThreshStep=001 (1.0 dB). This is the exact value read back from this
+  // board after rtl_433_ESP (RadioLib) initialised OOK and received KAKU
+  // ("first kaku received.txt": RegOokPeak: 0x08). Fixed mode with the floor
+  // set in RegOokFix (0x0F below) is what actually worked; Peak (0x20) broke it.
   writeReg(REG_OOK_PEAK, 0x08);
-  // RegOokFix: LOW fixed floor (0x0F = 15) per the working dump.
+  // RegOokFix: floor threshold = 0x0F (15) per the working dump.
   writeReg(REG_OOK_FIX, 0x0F);
   // RegOokAvg: datasheet default 0x12; matches dump.
   writeReg(REG_OOK_AVG, 0x12);
 
-  // In continuous RX, DIO2 outputs DATA regardless of mapping; keep defaults.
+  // Disable packet handler: preamble detect off, sync word off, no CRC,
+  // no address filtering. In direct/continuous mode the packet engine must
+  // be fully bypassed or it gates the DATA output. RadioLib's beginFSK()
+  // sets these via disableSyncWordFiltering(), disablePreambleDetect(), etc.
+  writeReg(REG_PREAMBLE_DETECT,  0x00);  // preamble detector off
+  writeReg(REG_SYNC_CONFIG,      0x00);  // sync word off
+  writeReg(REG_PACKET_CONFIG_1,  0x00);  // variable len off, no whitening, no CRC, no address filter
+  // Switch to continuous data mode: RegPacketConfig2 bit 6 = DataMode=1.
+  // Without this, DIO2 outputs packet-mode data, not the raw OOK bitstream.
+  writeReg(REG_PACKET_CONFIG_2, 0x40);
+
+  // DIO2 = DATA in continuous mode (mapping 00 in RegDioMapping1 bits[3:2]).
   writeReg(REG_DIO_MAPPING1, 0x00);
   writeReg(REG_DIO_MAPPING2, 0x00);
 
   // Enter continuous receive — data now streams on DIO2.
   writeReg(REG_OP_MODE, OPMODE_OOK_LOWFREQ | MODE_RX_CONT);
   delay(5);
-  Serial.print("SX1278 opmode_rxcont=0x"); Serial.println(readReg(REG_OP_MODE), HEX);
+  Serial.print("SX1278 opmode=0x"); Serial.print(readReg(REG_OP_MODE), HEX);
+  Serial.print(" OokPeak=0x"); Serial.print(readReg(REG_OOK_PEAK), HEX);
+  Serial.print(" OokFix=0x"); Serial.print(readReg(REG_OOK_FIX), HEX);
+  Serial.print(" RxBw=0x"); Serial.println(readReg(REG_RX_BW), HEX);
 
   SPI.endTransaction();
   return true;
+}
+
+uint8_t sx1278_rssi() {
+  SPI.beginTransaction(SPISettings(8000000, MSBFIRST, SPI_MODE0));
+  uint8_t v = readReg(0x11);  // RegRssiValue (FSK/OOK mode)
+  SPI.endTransaction();
+  return v >> 1;  // LSB = 0.5 dB, return integer dBm
 }
 
 #endif // ARDUINO_ARCH_ESP32
