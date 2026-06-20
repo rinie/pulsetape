@@ -4,8 +4,19 @@ A standalone diagnostic for the LilyGO T3 V1.6.1 (ESP32 + SX1278). It is **not**
 part of the PulseTape pipeline — it deliberately makes no assumptions and just
 shows raw truth, to bisect "radio/hardware vs PulseTape pipeline" problems.
 
-It mirrors the proven SX1278 OOK register init from `src/radio/sx1278_ook.cpp`,
-then runs in one of two modes (compile-time `PROBE_MODE`).
+It mirrors the proven SX1278 OOK register init from `src/radio/sx1278_ook.cpp`.
+**Flash once, then drive it over the serial monitor** — no recompiling to switch
+pins or modes. Type `?` for the menu:
+
+```
+  s      pin-scan mode (find the data pin; hold a 433 remote)
+  d      RMT-dump mode (raw timings on the selected RX pin)
+  1..6   select RX pin: 1=GPIO26 2=GPIO32 3=GPIO33 4=GPIO34 5=GPIO35 6=GPIO39
+  g      print live SX1278 registers
+  i      re-init the radio
+  R      reboot the ESP32
+  ?      this help
+```
 
 At boot it logs the **exact working conditions** — SPI/RST pins, frequency, mode,
 and a read-back of the live SX1278 registers (Version, OpMode, Lna, RxConfig,
@@ -29,37 +40,36 @@ SX1278 init: OK
 -----------------------------
 ```
 
-## Step 1 — find the data pin (PROBE_MODE_PINSCAN)
+## Step 1 — find the data pin (`s`, the default mode)
 
-Default mode. Flash, open serial @ 115200, and **hold a 433 MHz OOK remote** during
-each 2 s scan window. The probe prints edge counts for GPIO 26/32/33/34/35/39:
+Open serial @ 115200 and **hold a 433 MHz OOK remote**. Each ~1.5 s window prints
+edge counts across GPIO 26/32/33/34/35/39:
 
 ```
-edge counts over 2000 ms:
-  GPIO26 = 0
-  GPIO32 = 0
-  GPIO35 = 418      <- the data pin
-  ...
+edges over 1500 ms:  GPIO26=0  GPIO32=0  GPIO33=0  GPIO34=0  GPIO35=418  GPIO39=0
 ```
 
-The pin with a large count is where the SX1278 is putting demodulated data. This
+The pin with a large count is where the SX1278 is putting demodulated data — this
 settles the GPIO32-vs-GPIO35 question empirically.
 
-## Step 2 — dump raw timings (PROBE_MODE_RMTDUMP)
+## Step 2 — dump raw timings (`d`)
 
-Set `PROBE_RX_PIN` to the pin from step 1, change `PROBE_MODE` to
-`PROBE_MODE_RMTDUMP`, reflash. Each remote press should print:
+Press the number key for the winning pin (e.g. `5` for GPIO35), then `d`. Each
+remote press now prints:
 
 ```
 FRAME items=34 us: 10052,260,252,256,1280,192,1284,...
 ```
 
 Compare to a known KAKU capture: short ~260 µs, long ~1280 µs. If these look
-right, the radio + capture chain is fully good.
+right, the radio + capture chain is fully good. (`g` re-prints the live registers
+any time; `R` reboots.)
 
 ## Build
 
-Arduino IDE: open `ook_probe.ino`, select the board, Upload. Or PlatformIO:
+Arduino IDE: open `ook_probe.ino`, select the board, Upload, open Serial Monitor
+@ 115200 (set line ending to "No line ending" or any — single keys work either
+way). Or PlatformIO:
 `cd examples/ook_probe && pio run -e esp32_lilygo1 -t upload && pio device monitor`.
 
 ## What each outcome means
