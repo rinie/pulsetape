@@ -1,13 +1,39 @@
 // board/lilygo_t3_v161.h
-// LilyGO TTGO T3 LoRa32 433MHz V1.6.1 (ESP32, SX1276).
+// LilyGO TTGO T3 LoRa32 433 MHz V1.6.1  (ESP32-PICO-D4 + SX1276/SX1278)
 //
-// RX uses an EXTERNAL analog superheterodyne receiver (e.g. SRX882S) on a free
-// input-only GPIO, captured via the ESP32 RMT backend. The onboard SX1276 is a
-// poor OOK receiver (see receivers.md) and is reserved here for TX / future FSK.
+// Verified pinout — confirmed on unit MAC e8:6b:ea:0a:0c:a0 (ESP32-PICO-D4 rev1.1)
+// by register dump after successful KAKU reception (see "first kaku received.txt").
 //
-// All values verified against community pinouts for the V1.6.1; note the board's
-// pin mapping is inconsistent across revisions (esp. SX1276 RST and OLED I2C),
-// so confirm against your unit.
+// SX1278 (onboard LoRa radio used as OOK front-end)
+//   GPIO  5  — SX1278 SCK
+//   GPIO 19  — SX1278 MISO
+//   GPIO 27  — SX1278 MOSI
+//   GPIO 18  — SX1278 NSS / CS
+//   GPIO 23  — SX1278 RST  (active LOW; some V1.0 revisions use GPIO 14 — verify)
+//   GPIO 26  — SX1278 DIO0 (RSSI threshold / IRQ)
+//   GPIO 33  — SX1278 DIO1 (unused for OOK)
+//   GPIO 32  — SX1278 DIO2 (DATA output in continuous OOK mode — capture pin)
+//
+// OLED (SSD1306, 128×64, I2C)
+//   GPIO 21  — SDA  (pins_arduino.h for ttgo-lora32-v1 gives SDA=4 — WRONG for V1.6.1)
+//   GPIO 22  — SCL  (pins_arduino.h gives SCL=15 — also WRONG)
+//   I2C addr 0x3C, no RST pin (GPIO 16 is internal flash CS on PICO-D4 — never drive it)
+//
+// Misc
+//   GPIO 25  — Onboard blue LED, active HIGH  (LED_BUILTIN in ttgo-lora32-v21new variant)
+//   GPIO  4  — SD card CS
+//   GPIO 15  — SD MOSI
+//   GPIO  2  — SD MISO
+//   GPIO 14  — SD SCK
+//   GPIO 34  — Free, input-only, no pull  (J3 header)
+//   GPIO 35  — Free, input-only, no pull  (J3 header)
+//   GPIO 36  — Free, input-only            (VDET2 / SRX882S DATA option)
+//   GPIO 39  — Free, input-only            (VDET1)
+//
+// OOK receive path (confirmed working):
+//   SX1278 configured in OOK continuous mode via bare SPI (src/radio/sx1278_ook.cpp).
+//   DIO2 (GPIO 32) outputs the threshold-sliced bitstream. A CHANGE interrupt on
+//   GPIO 32 measures HIGH/LOW durations in µs — the same approach as rtl_433_ESP.
 
 #ifndef PULSETAPE_BOARD_LILYGO_T3_V161_H
 #define PULSETAPE_BOARD_LILYGO_T3_V161_H
@@ -16,16 +42,15 @@
 
 // --- RF receive source selection ---
 // PRIMARY (default): onboard SX1278 in OOK continuous mode; demodulated data on
-//   DIO2 -> GPIO32, captured by RMT. No extra hardware. See receivers.md.
-// ALTERNATIVE: define PULSETAPE_RX_SOURCE_SRX882S to instead use an external
-//   SRX882S superhet on GPIO36 (input-only, free on the V1.6.1 header; DATA is
-//   3.3V -> wire direct, no divider; tie SRX882S pin 4 CS -> VCC; 17cm antenna)
-//   and skip the SX1278 front-end. (Better OOK sensitivity; needs the module.)
+//   DIO2 → GPIO32, captured by CHANGE interrupt (µs timing). No extra hardware.
+// ALTERNATIVE: define PULSETAPE_RX_SOURCE_SRX882S to use an external SRX882S
+//   superhet on GPIO36 instead and skip the SX1278 front-end.
+//   (Better OOK sensitivity; requires the module.)
 #if defined(PULSETAPE_RX_SOURCE_SRX882S)
   #define RF_DATA_PIN 36          // external SRX882S DATA
   #define USE_SX1278_FRONTEND 0
 #else
-  #define RF_DATA_PIN 35          // SX1276 DIO2 — confirmed GPIO35 on V1.6.1
+  #define RF_DATA_PIN 32          // SX1276 DIO2 — GPIO32, per ttgo-lora32-v21new variant
   #define USE_SX1278_FRONTEND 1
 #endif
 
@@ -49,7 +74,10 @@
 #define SX1276_RST   23   // some revisions 14 — verify
 #define SX1276_DIO0  26
 #define SX1276_DIO1  33
-#define SX1276_DIO2  35          // confirmed GPIO35 on V1.6.1 (was 32)
+#define SX1276_DIO2  32          // GPIO32, per ttgo-lora32-v21new variant / LORA_D2
+
+// --- Onboard LED ---
+#define ONBOARD_LED 25   // blue LED, active HIGH
 
 // --- Onboard SSD1306 OLED ---
 // pins_arduino.h for ttgo-lora32-v1 has SDA=4/SCL=15 (V1.0 pinout) — WRONG

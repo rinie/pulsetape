@@ -34,5 +34,9 @@
 bool sx1278_ook_begin(uint8_t sck, uint8_t miso, uint8_t mosi,
                       uint8_t nss, uint8_t rst, uint32_t freq_hz);
 
+// Read current RSSI (FSK/OOK mode, RegRssiValue 0x11). Returns -dBm (positive).
+// Call only after sx1278_ook_begin() and while in RX mode.
+uint8_t sx1278_rssi();
+
 #endif // ARDUINO_ARCH_ESP32
 #endif // PULSETAPE_SX1278_OOK_H
