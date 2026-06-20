@@ -92,12 +92,32 @@ bool sx1278_ook_begin(uint8_t sck, uint8_t miso, uint8_t mosi,
   writeReg(REG_FRF_MID, (uint8_t)(frf >> 8));
   writeReg(REG_FRF_LSB, (uint8_t)(frf));
 
-  // The OOK front-end values below are aligned to a KNOWN-GOOD register dump from
-  // this exact board (LilyGO T3 V1.6.1, SX1278) that successfully received KAKU
-  // under rinie/rtl_433_ESP @ ZradioSX127x ("first kaku received.txt": RegOpMode
-  // 0x2D, RegRxBw 0x01, RegOokPeak 0x08, RegOokFix 0x0F, RegOokAvg 0x12,
-  // RegLna 0x20). Register *values* are facts (datasheet + that dump); no code
-  // was copied from rtl_433_ESP (GPL) or OOKwiz (LGPL-3.0).
+  // ---------------------------------------------------------------------------
+  // FULL OOK continuous-RX register map. Every value matches the known-good dump
+  // read from THIS board after rtl_433_ESP (RadioLib) received KAKU
+  // ("first kaku received.txt"). Values are facts (Semtech SX1276/77/78/79
+  // datasheet + that dump); no code copied from rtl_433_ESP (GPL) / OOKwiz (LGPL).
+  //
+  //  Reg               Addr  Value   Meaning
+  //  RegOpMode         0x01  0x2D    LongRangeMode=0 (FSK/OOK), OOK, LowFreqOn, RXCONT
+  //  RegBitrate        0x02  0x682B  ~1.2 kbps — OOK threshold timing reference
+  //  RegFrf            0x06  (calc)  carrier = freq * 2^19 / 32 MHz (433.92 MHz)
+  //  RegLna            0x0C  0x20    max gain; HF boost off (433 uses the LF port)
+  //  RegRxConfig       0x0D  0x08    AgcAutoOn
+  //  RegRxBw           0x12  0x01    RxBwMant=16, Exp=1 -> ~250 kHz (narrower lost signal)
+  //  RegOokPeak        0x14  0x08    OokThreshType=01 (peak), BitSyncOn=0 (raw bitstream)
+  //  RegOokFix         0x15  0x0F    fixed floor under the peak detector
+  //  RegOokAvg         0x16  0x12    peak-threshold decrement ~once/chip (datasheet default)
+  //  RegPreambleDetect 0x1F  0x00    preamble detector OFF
+  //  RegSyncConfig     0x27  0x00    sync-word detection OFF
+  //  RegPacketConfig1  0x30  0x00    fixed length, no whitening, no CRC, no addr filter
+  //  RegPacketConfig2  0x31  0x00    DataMode bit6=0 => CONTINUOUS (0x40=packet MUTES DIO2!)
+  //  RegDioMapping1    0x40  0x00    DIO2 = DATA in continuous mode
+  //  RegDioMapping2    0x41  0x00    defaults
+  //
+  // The bug that cost a day: RegPacketConfig2 must be 0x00 (continuous). Its reset
+  // default 0x40 is PACKET mode, which gates DIO2 — radio configured but mute.
+  // ---------------------------------------------------------------------------
 
   // Bitrate ~1.2 kbps: BitRate = FXOSC / rate. Even with bit-sync off this sets
   // the OOK peak-threshold timing reference; a slow rate suits slow OOK. rtl_433_
@@ -118,11 +138,10 @@ bool sx1278_ook_begin(uint8_t sck, uint8_t miso, uint8_t mosi,
   // (rtl_433_ESP found narrower bandwidth dropped signals).
   writeReg(REG_RX_BW, 0x01);
 
-  // RegOokPeak = 0x08: Fixed threshold (OokThreshType[1:0]=00), BitSyncOn=0,
-  // OokPeakThreshStep=001 (1.0 dB). This is the exact value read back from this
-  // board after rtl_433_ESP (RadioLib) initialised OOK and received KAKU
-  // ("first kaku received.txt": RegOokPeak: 0x08). Fixed mode with the floor
-  // set in RegOokFix (0x0F below) is what actually worked; Peak (0x20) broke it.
+  // RegOokPeak 0x08: OokThreshType[4:3]=01 (PEAK detector), BitSyncOn(bit5)=0 so
+  // DIO2 carries the RAW slicer output (required for arbitrary multi-rate OOK),
+  // OokPeakThreshStep[2:0]=000. Proven value from the dump; the peak detector uses
+  // RegOokFix (below) as its floor. (A spurious 0x20 = BitSyncOn on + fixed broke it.)
   writeReg(REG_OOK_PEAK, 0x08);
   // RegOokFix: floor threshold = 0x0F (15) per the working dump.
   writeReg(REG_OOK_FIX, 0x0F);
@@ -150,10 +169,14 @@ bool sx1278_ook_begin(uint8_t sck, uint8_t miso, uint8_t mosi,
   // Enter continuous receive — data now streams on DIO2.
   writeReg(REG_OP_MODE, OPMODE_OOK_LOWFREQ | MODE_RX_CONT);
   delay(5);
+  // Read back the critical registers so the boot log verifies the live state
+  // (PktCfg2 especially — 0x00 = continuous; 0x40 would mean the chip is mute).
   Serial.print("SX1278 opmode=0x"); Serial.print(readReg(REG_OP_MODE), HEX);
+  Serial.print(" RxBw=0x"); Serial.print(readReg(REG_RX_BW), HEX);
   Serial.print(" OokPeak=0x"); Serial.print(readReg(REG_OOK_PEAK), HEX);
   Serial.print(" OokFix=0x"); Serial.print(readReg(REG_OOK_FIX), HEX);
-  Serial.print(" RxBw=0x"); Serial.println(readReg(REG_RX_BW), HEX);
+  Serial.print(" PktCfg1=0x"); Serial.print(readReg(REG_PACKET_CONFIG_1), HEX);
+  Serial.print(" PktCfg2=0x"); Serial.println(readReg(REG_PACKET_CONFIG_2), HEX);
 
   SPI.endTransaction();
   return true;

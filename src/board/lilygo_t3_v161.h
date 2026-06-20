@@ -87,12 +87,17 @@
 #define SX1276_DIO1  LORA_D1
 #define SX1276_DIO2  LORA_D2
 
-// --- Onboard LED ---
+// --- Board feedback capabilities (the app guards OLED/LED code on these) ---
+// ONBOARD_LED: a GPIO the app pulses on each received telegram (active HIGH here).
+// BOARD_HAS_OLED: this board has the SSD1306; the app shows telegrams on it.
+// A different board can leave either undefined and the app still builds (serial only).
 #ifdef LED_BUILTIN
 #define ONBOARD_LED LED_BUILTIN   // blue LED (GPIO25), active HIGH
 #else
 #define ONBOARD_LED 25
 #endif
+
+#define BOARD_HAS_OLED 1
 
 // --- Onboard SSD1306 OLED ---
 // pins_arduino.h for ttgo-lora32-v1 has SDA=4/SCL=15 (V1.0 pinout) — WRONG
