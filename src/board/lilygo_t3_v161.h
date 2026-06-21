@@ -75,6 +75,8 @@
 #define REPEAT_WINDOW_MS 800
 #define TAIL_TRIM_PAIRS 2   // drop trailing nibble pairs from the fingerprint
                             // (last bits wobble at the frame boundary); tune per captures
+#define MAX_CLASS_PCT 90    // reject if one timing class is >= this % of elements
+                            // (degenerate = noise/stuck carrier, not a telegram)
 
 // --- Onboard SX1276/78 pins, sourced from the board variant's pins_arduino.h ---
 // Single source of truth: the right board gives the right pins, and resolves the

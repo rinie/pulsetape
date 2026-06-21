@@ -36,5 +36,6 @@
 #define REPEAT_MIN_COUNT 2    // identical frames required before forwarding
 #define REPEAT_WINDOW_MS 800  // frames within this window count as repeats
 #define TAIL_TRIM_PAIRS 2     // trailing nibble pairs dropped from the fingerprint
+#define MAX_CLASS_PCT 90      // reject if one timing class is >= this % of elements
 
 #endif // PULSETAPE_BOARD_SENSECAP_INDICATOR_H

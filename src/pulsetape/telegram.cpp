@@ -5,6 +5,18 @@
 bool telegram_valid(const RawTelegram& t, const TelegramConfig& cfg) {
   if (t.count < cfg.min_pulses) return false;
 
+  // Degenerate-frame reject: real OOK has >= 2 well-populated timing classes (the
+  // bit symbols). If one class accounts for >= max_class_pct of all elements there
+  // is no bit structure — it's noise or a stuck carrier, not a telegram.
+  if (cfg.max_class_pct > 0 && t.class_count > 0) {
+    uint32_t total = 0, mx = 0;
+    for (uint8_t i = 0; i < t.class_count; i++) {
+      total += t.class_hits[i];
+      if (t.class_hits[i] > mx) mx = t.class_hits[i];
+    }
+    if (total > 0 && (mx * 100u / total) >= cfg.max_class_pct) return false;
+  }
+
   uint16_t out_of_range = 0;
   uint16_t same_as_prev = 0;
   uint16_t prev = 0;

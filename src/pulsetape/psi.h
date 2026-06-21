@@ -25,6 +25,11 @@
 // Capacity of the nibble string (one byte per pulse/space pair).
 #define PSI_MAX_NIBBLES 256
 
+// Detected modulation (which side of the pulse/space pair carries the data bits).
+#define PSI_DATA_PS 0   // both pulse and space vary (e.g. complementary PWM)
+#define PSI_DATA_P  1   // PWM: pulse width carries the bit, gap ~constant
+#define PSI_DATA_S  2   // PPM/PDM: gap carries the bit, pulse ~constant
+
 class PulseSpaceIndex {
  public:
   PulseSpaceIndex() { reset(); }
@@ -62,6 +67,13 @@ class PulseSpaceIndex {
   // sync symbol or a noise spike; high counts are the data classes.
   uint16_t bucketHits(uint8_t i) const { return micro_count_[i]; }
 
+  // Of those, how many were pulses (the rest were spaces).
+  uint16_t bucketPulseHits(uint8_t i) const { return micro_pulse_[i]; }
+
+  // Classify modulation from which side varies: PSI_DATA_P (only pulse varies),
+  // PSI_DATA_S (only space varies), or PSI_DATA_PS (both). Call after the frame.
+  uint8_t detectDataType() const;
+
   // Compare two nibble strings for repeat detection. Returns true when equal.
   static bool nibblesEqual(const uint8_t* a, uint16_t a_len,
                            const uint8_t* b, uint16_t b_len);
@@ -76,6 +88,7 @@ class PulseSpaceIndex {
   uint16_t micro_min_[PSI_MICRO_ELEMENTS];
   uint16_t micro_max_[PSI_MICRO_ELEMENTS];
   uint16_t micro_count_[PSI_MICRO_ELEMENTS];  // elements seen per class
+  uint16_t micro_pulse_[PSI_MICRO_ELEMENTS];  // of which, pulses (rest are spaces)
   uint8_t  bucket_count_;
 
   uint8_t  nibbles_[PSI_MAX_NIBBLES];

@@ -36,6 +36,7 @@ void FrameAssembler::finalizeFrame(uint32_t now_ms) {
       current_.class_max[i] = psi_.bucketMax(i);
       current_.class_hits[i] = psi_.bucketHits(i);
     }
+    current_.data_type = psi_.detectDataType();
     current_.timestamp_ms = now_ms;
 
     if (telegram_valid(current_, cfg_)) {
