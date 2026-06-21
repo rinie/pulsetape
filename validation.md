@@ -1,12 +1,11 @@
-# First end-to-end capture — validation log
+# End-to-end capture — validation log
 
-Date: 2026-06-20. Board: LilyGO TTGO T3 LoRa32 433 MHz V1.6.1 (ESP32-PICO-D4 +
-SX1278). Firmware: `pulsetape.ino` main sketch — SX1278 OOK front-end →
-**RMT capture → FrameAssembler → psNibbleIndex → RepeatDetector** → serial/OLED/LED.
+Board: LilyGO TTGO T3 LoRa32 433 MHz V1.6.1 (ESP32-PICO-D4 + SX1278). Firmware:
+`pulsetape.ino` main sketch — SX1278 OOK front-end →
+**RMT capture → FrameAssembler → psNibbleIndex (normalize) → RepeatDetector** →
+serial / OLED / LED. Captures below are real device output (2026-06-21).
 
-This records the first successful reception and what it proves.
-
-## Radio config (boot readback — all values match the known-good dump)
+## Radio config (boot readback — matches the known-good rtl_433_ESP dump)
 
 ```
 SX1278 opmode=0x2D RxBw=0x1 OokPeak=0x8 OokFix=0xF PktCfg1=0x0 PktCfg2=0x0
@@ -15,70 +14,65 @@ SX1278 opmode=0x2D RxBw=0x1 OokPeak=0x8 OokFix=0xF PktCfg1=0x0 PktCfg2=0x0
 `PktCfg2=0x0` is the one that mattered: continuous data mode, so DIO2 emits the
 raw OOK bitstream (the `0x40` packet-mode default had muted it). DIO2 → GPIO32.
 
-## Captured protocols
+## Output line
 
-Three different transmitters, each captured and fingerprinted. The **nibble byte**
-is `(pulseClassIndex << 4) | spaceClassIndex`; the string is the repeat fingerprint.
+```
+RF;count=<edges>;repeats=<n>;micros=[<per-class us ranges>];counts=[<per-class hits>];mod=<p|s|ps>;psix=<data hex>;psi=<index string>
+```
 
-### Old KAKU (PWM, 2 timing classes)
-- `count=49`, classes: short ~320–384 µs, long ~1088–1152 µs.
-- nibbles: `010101100101010101010110010101010101011001100101`
-  (bytes are `01` = short-high/long-low, `10` = long-high/short-low — classic PWM bit).
+- **micros / counts** — per timing class (ascending by duration); a low count is a
+  one-off sync or a noise spike, high counts are data classes.
+- **mod** — detected modulation: `p` (pulse carries the bit), `s` (gap carries it,
+  pulse constant), `ps` (both vary).
+- **psix** — data bits → hex, packed per `mod`. **psi** — raw pulse/space index string.
 
-### New KAKU (PDM, 3 timing classes)
-- `count=128`, classes: short ~192–256 µs, long ~1280–1344 µs, sync gap ~2688 µs.
-- nibbles: `01000200020200000200020002000202000200020002000002000202000002020002000200000202000002000202000200020000020002000200020002020000`
-  (third class is the sync gap — exactly why NewKAKU needs the extra bucket).
+## Captured protocols (real lines)
 
-### Sonoff 433 (EV1527/PT2262-style PWM, 2 timing classes)
-- `count=49`, classes: short ~384 µs, long ~1216–1280 µs.
-- nibbles: `010101010110010101100101100110011001101001011001`
+### New KAKU — PDM, 3 classes, `mod=s`
+```
+RF;count=131;repeats=2;micros=[192-320,1280-1344,2688];counts=[97,32,1];mod=s;psix=5956A966A65A9558;psi=0200010001010000010001000100010100010001000100000100010100000101000100010000010100000100010100010001000001000100010001000101...
+```
+Pulse is always short (all 97 pulses in class 0) → `mod=s`, so psix packs only the
+gap bits → a compact 16-digit code. The lone `counts=…,1` is the ~2688 µs sync.
+
+### Old KAKU / Sonoff — PWM, 2 classes, `mod=ps`
+```
+RF;count=49;repeats=2;micros=[320-384,1024-1088];counts=[24,24];mod=ps;psix=56555655566;psi=01010110010101010101011001010101010101100110
+RF;count=49;repeats=2;micros=[320-448,1152-1280];counts=[24,24];mod=ps;psix=556565999A5;psi=01010101011001010110010110011001100110100101
+```
+Both pulse and gap vary (balanced `counts=[24,24]`) → `mod=ps`, two bits per pair.
+Two distinct remotes → two stable codes.
 
 ## What this validates
 
-1. **Adaptive bucketing works.** `psNibbleIndex` discovered 2 classes for KAKU/Sonoff
-   and 3 for NewKAKU on its own — no per-protocol config.
-2. **The nibble string is a stable fingerprint.** Every repeat of a given press
-   produced a **byte-for-byte identical** nibble string, even though the raw
-   `pulses` jittered between repeats (e.g. `1344`↔`1345`, `256`↔`255`,
-   `320`↔`384`). The ±150 µs tolerance windows absorbed the jitter.
-3. **Repeat-detection is the validation.** `repeats` climbed 2→3→4→5→6 across a
-   held press and reset on the next — i.e. "same fingerprint seen N times" with no
-   CRC, confirmed live on three protocols. This is the core thesis (see
-   `protocol_timings.md`): for one-way cheap-receiver RF, **repetition is the
-   error check.**
+1. **Adaptive bucketing** — `psNibbleIndex` finds 2 classes (KAKU/Sonoff) or 3
+   (NewKAKU) on its own, no per-protocol config.
+2. **Canonical fingerprint** — classes are normalized to ascending duration
+   (0 = shortest), so the `psi`/`psix` are byte-identical across repeats despite
+   raw-pulse jitter (the ±150 µs tolerance windows absorb it).
+3. **Repeat-detection = validation** — each telegram forwards **once**, when a
+   2nd identical fingerprint confirms it, no CRC. The core thesis
+   (`protocol_timings.md`), proven on three protocols.
+4. **counts** distinguish sync/spike (low) from data (high); **degenerate frames**
+   (one class ≥ 90 %) are rejected as noise.
+5. **mod detection** picks the modulation (NewKAKU→`s`, KAKU/Sonoff→`ps`) and
+   `psix` packs the cleaner per-mode code.
+6. **No length cap** — RMT now uses 4 memory blocks (512 edges); NewKAKU reports
+   its true `count=131` (was truncated at 128).
 
-The capture/quantise/repeat core is therefore done and proven on real signals.
-
----
+## Done since the first capture
+psNibbleIndex integration · duration normalization · one-event-per-telegram ·
+tail-trim · micros/counts output · psix/psi naming · `mod` p/s/ps detection ·
+degenerate-noise reject · RMT 128-edge cap lifted.
 
 ## Next steps
 
-Roadmap from here, roughly in priority order.
-
-1. **One event per telegram (forwarding semantics).** Today the sink fires on
-   *every* repeat (`repeats=2,3,4,5,6…`). Before any downstream consumer, change
-   `RepeatDetector`/sink to forward **once** when `repeat_count` first reaches
-   `REPEAT_MIN_COUNT`, then suppress until the repeat window expires. Small, and a
-   prerequisite for clean decode/publish.
-
-2. **Protocol decoders** above the nibble layer (`src/decode/`): old KAKU,
-   NewKAKU, EV1527/PT2262 → device id + command; then Manchester/Oregon. These
-   consume the validated `RawTelegram` (nibbles + pulses), so they run on clean,
-   already-de-duplicated input.
-
-3. **Output transport / architecture fork.** The original design (`CONTEXT.md`)
-   split RP2040 capture ↔ ESP32 WiFi over COBS/UART. **On the T3 the ESP32 is both
-   the capture host and the WiFi host**, so that split collapses: ESP32 can do
-   capture → decode → **MQTT / Home Assistant** in one chip. Decide: keep the
-   COBS/UART path (for the SenseCAP/RP2040 target) and *also* add a direct
-   ESP32→MQTT path for the T3.
-
-4. **TX (replay/control).** Use the SX1276 to transmit OOK (it replaces the STX882
-   from the original plan); reuse the captured pulse arrays for replay.
-
-5. **Robustness/tuning.** Bump `PSI_MAX_NIBBLES`/`TELEGRAM_MAX_PULSES` for long
-   HVAC frames (see `long_packets.md`), tune `FRAME_GAP_US` against captures,
-   trim the trailing unpaired pulse (odd `count`).
-
-6. **Display polish.** Richer OLED view (decoded device/command once decoders land).
+1. **Protocol decoders** (`src/decode/`): NewKAKU, old KAKU, EV1527/PT2262 →
+   device id + command (NewKAKU's `s` bits are Manchester — decode to the 32-bit
+   address/unit/on-off). Then Oregon/Manchester sensors.
+2. **Output transport** — the T3's ESP32 is both capture and WiFi host, so it can
+   go capture → decode → **MQTT / Home Assistant** directly (the original
+   COBS/UART split was for the RP2040+ESP32 SenseCAP; keep that for that target).
+3. **TX / replay** via the SX1276 (replaces the STX882).
+4. **Long HVAC frames** — bump `PSI_MAX_NIBBLES`/`TELEGRAM_MAX_PULSES` + RMT blocks
+   for 424-bit+ protocols (`long_packets.md`).
