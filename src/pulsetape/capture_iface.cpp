@@ -20,8 +20,13 @@ void FrameAssembler::finalizeFrame(uint32_t now_ms) {
     // canonical, then snapshot it. Both this frame and the ring entries are
     // normalized, so repeat-matching compares like with like.
     psi_.normalize();
-    current_.nibble_count = psi_.nibbleCount();
-    memcpy(current_.nibbles, psi_.nibbles(), current_.nibble_count);
+    // Trim unreliable trailing nibbles (the last bit(s) wobble at the transmission
+    // tail / frame-gap boundary) from the repeat fingerprint. Raw pulses[] are kept
+    // intact for decoders — only the matching fingerprint is shortened.
+    uint16_t nc = psi_.nibbleCount();
+    nc = (nc > cfg_.tail_trim_pairs) ? (uint16_t)(nc - cfg_.tail_trim_pairs) : 0;
+    current_.nibble_count = nc;
+    memcpy(current_.nibbles, psi_.nibbles(), nc);
     current_.timestamp_ms = now_ms;
 
     if (telegram_valid(current_, cfg_)) {

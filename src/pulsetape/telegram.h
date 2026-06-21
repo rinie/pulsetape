@@ -40,6 +40,8 @@ struct TelegramConfig {
   uint16_t min_pulses;        // fewer   -> rejected as noise
   uint8_t  repeat_min_count;  // identical frames required before forwarding
   uint16_t repeat_window_ms;  // frames within this window are repeat candidates
+  uint8_t  tail_trim_pairs;   // trailing nibble pairs dropped from the fingerprint
+                              // (transmission-end/boundary jitter); raw pulses kept
 };
 
 // Quality filter. Rejects telegrams that are too short, have too many
