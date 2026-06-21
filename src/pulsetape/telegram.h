@@ -40,6 +40,8 @@ struct RawTelegram {
   uint16_t class_max[PSI_MICRO_ELEMENTS];
   uint16_t class_hits[PSI_MICRO_ELEMENTS];  // occurrences per class (spike/sync vs data)
   uint8_t  data_type;                       // PSI_DATA_PS / _P / _S (which side carries bits)
+  uint8_t  const_class;                     // for _S/_P: class index of the constant side
+                                            // (0 -> type "s"/"p"; 1 -> "1s"/"1p")
 };
 
 // Tuning thresholds. The app populates this from the board layer.
