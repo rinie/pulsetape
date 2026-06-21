@@ -37,6 +37,16 @@ void FrameAssembler::finalizeFrame(uint32_t now_ms) {
       current_.class_hits[i] = psi_.bucketHits(i);
     }
     current_.data_type = psi_.detectDataType();
+    // For S/P, record which class the constant (dropped) side sits in, so the
+    // output can denote a constant-1 column ("1s"/"1p") vs constant-0 ("s"/"p").
+    current_.const_class = 0;
+    if (current_.data_type == PSI_DATA_S) {           // pulse is constant
+      for (uint8_t i = 0; i < current_.class_count; i++)
+        if (psi_.bucketPulseHits(i) > 0) { current_.const_class = i; break; }
+    } else if (current_.data_type == PSI_DATA_P) {    // space is constant
+      for (uint8_t i = 0; i < current_.class_count; i++)
+        if (psi_.bucketHits(i) - psi_.bucketPulseHits(i) > 0) { current_.const_class = i; break; }
+    }
     current_.timestamp_ms = now_ms;
 
     if (telegram_valid(current_, cfg_)) {
