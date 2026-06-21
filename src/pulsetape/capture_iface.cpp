@@ -27,6 +27,14 @@ void FrameAssembler::finalizeFrame(uint32_t now_ms) {
     nc = (nc > cfg_.tail_trim_pairs) ? (uint16_t)(nc - cfg_.tail_trim_pairs) : 0;
     current_.nibble_count = nc;
     memcpy(current_.nibbles, psi_.nibbles(), nc);
+
+    // Snapshot the timing-class table (ascending by duration after normalize):
+    // the pulse length for each index value, used instead of the full pulse list.
+    current_.class_count = psi_.bucketCount();
+    for (uint8_t i = 0; i < current_.class_count; i++) {
+      current_.class_min[i] = psi_.bucketMin(i);
+      current_.class_max[i] = psi_.bucketMax(i);
+    }
     current_.timestamp_ms = now_ms;
 
     if (telegram_valid(current_, cfg_)) {
