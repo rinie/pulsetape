@@ -35,5 +35,6 @@
 #define MIN_PULSES 8          // fewer pulses than this is noise, not a telegram
 #define REPEAT_MIN_COUNT 2    // identical frames required before forwarding
 #define REPEAT_WINDOW_MS 800  // frames within this window count as repeats
+#define TAIL_TRIM_PAIRS 2     // trailing nibble pairs dropped from the fingerprint
 
 #endif // PULSETAPE_BOARD_SENSECAP_INDICATOR_H

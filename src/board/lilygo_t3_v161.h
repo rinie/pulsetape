@@ -73,6 +73,8 @@
 #define MIN_PULSES 8
 #define REPEAT_MIN_COUNT 2
 #define REPEAT_WINDOW_MS 800
+#define TAIL_TRIM_PAIRS 2   // drop trailing nibble pairs from the fingerprint
+                            // (last bits wobble at the frame boundary); tune per captures
 
 // --- Onboard SX1276/78 pins, sourced from the board variant's pins_arduino.h ---
 // Single source of truth: the right board gives the right pins, and resolves the
