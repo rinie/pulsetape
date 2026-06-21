@@ -42,16 +42,37 @@ void PulseSpaceIndex::normalize() {
   uint16_t tmin[PSI_MICRO_ELEMENTS];
   uint16_t tmax[PSI_MICRO_ELEMENTS];
   uint16_t tcnt[PSI_MICRO_ELEMENTS];
+  uint16_t tpul[PSI_MICRO_ELEMENTS];
   for (uint8_t k = 0; k < bucket_count_; k++) {
     tmin[k] = micro_min_[order[k]];
     tmax[k] = micro_max_[order[k]];
     tcnt[k] = micro_count_[order[k]];
+    tpul[k] = micro_pulse_[order[k]];
   }
   for (uint8_t k = 0; k < bucket_count_; k++) {
     micro_min_[k] = tmin[k];
     micro_max_[k] = tmax[k];
     micro_count_[k] = tcnt[k];
+    micro_pulse_[k] = tpul[k];
   }
+}
+
+uint8_t PulseSpaceIndex::detectDataType() const {
+  // A side (pulse or space) "uses" a class if it placed >= sig elements in it.
+  // If only the space side spreads across >=2 classes, the bit is in the gap
+  // (PPM/PDM); if only the pulse side does, it's in the pulse width (PWM);
+  // otherwise both vary (complementary PWM etc.) -> pack both.
+  const uint16_t sig = 2;
+  uint8_t pulse_classes = 0, space_classes = 0;
+  for (uint8_t i = 0; i < bucket_count_; i++) {
+    uint16_t pulses = micro_pulse_[i];
+    uint16_t spaces = (micro_count_[i] >= pulses) ? (uint16_t)(micro_count_[i] - pulses) : 0;
+    if (pulses >= sig) pulse_classes++;
+    if (spaces >= sig) space_classes++;
+  }
+  if (pulse_classes <= 1 && space_classes >= 2) return PSI_DATA_S;
+  if (space_classes <= 1 && pulse_classes >= 2) return PSI_DATA_P;
+  return PSI_DATA_PS;
 }
 
 // Tolerance windows from NodoDueRkr: wider as durations grow, because absolute
@@ -105,6 +126,7 @@ uint8_t PulseSpaceIndex::indexOf(uint16_t value) {
     micro_min_[i] = value;
     micro_max_[i] = value;
     micro_count_[i] = 1;
+    micro_pulse_[i] = 0;
     return i;
   }
 
@@ -114,6 +136,7 @@ uint8_t PulseSpaceIndex::indexOf(uint16_t value) {
 
 uint8_t PulseSpaceIndex::addPair(uint16_t pulse_us, uint16_t space_us) {
   uint8_t pulse_idx = indexOf(pulse_us);
+  if (pulse_idx != PSI_OVERFLOW) micro_pulse_[pulse_idx]++;
   uint8_t space_idx = indexOf(space_us);
   uint8_t nibble = (uint8_t)(((pulse_idx & 0x0F) << 4) | (space_idx & 0x0F));
   if (nibble_count_ < PSI_MAX_NIBBLES) {

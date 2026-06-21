@@ -39,6 +39,7 @@ struct RawTelegram {
   uint16_t class_min[PSI_MICRO_ELEMENTS];
   uint16_t class_max[PSI_MICRO_ELEMENTS];
   uint16_t class_hits[PSI_MICRO_ELEMENTS];  // occurrences per class (spike/sync vs data)
+  uint8_t  data_type;                       // PSI_DATA_PS / _P / _S (which side carries bits)
 };
 
 // Tuning thresholds. The app populates this from the board layer.
@@ -50,6 +51,8 @@ struct TelegramConfig {
   uint16_t repeat_window_ms;  // frames within this window are repeat candidates
   uint8_t  tail_trim_pairs;   // trailing nibble pairs dropped from the fingerprint
                               // (transmission-end/boundary jitter); raw pulses kept
+  uint8_t  max_class_pct;     // reject the frame if one timing class is >= this %
+                              // of all elements (degenerate = noise/carrier, not data)
 };
 
 // Quality filter. Rejects telegrams that are too short, have too many
