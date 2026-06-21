@@ -27,15 +27,24 @@ void debug_print_telegram(const RawTelegram& t) {
   Serial.print(";repeats=");
   Serial.print(t.repeat_count);
 
-  // micros: the pulse length per index value, as ranges (ascending by duration).
-  // e.g. micros=0:192-256,1:1280-1344,2:2688
-  Serial.print(";micros=");
+  // micros: pulse length per index value, as ascending ranges. Position = index,
+  // so no index prefix. e.g. micros=[192-256,1280-1344,2688]
+  Serial.print(";micros=[");
   for (uint8_t i = 0; i < t.class_count; i++) {
-    Serial.print(i); Serial.print(':');
     Serial.print(t.class_min[i]);
     if (t.class_max[i] != t.class_min[i]) { Serial.print('-'); Serial.print(t.class_max[i]); }
     if (i + 1 < t.class_count) Serial.print(',');
   }
+  Serial.print(']');
+
+  // counts: occurrences per index value (same order as micros). A low count flags a
+  // one-off sync/long symbol or a noise spike; high counts are the data classes.
+  Serial.print(";counts=[");
+  for (uint8_t i = 0; i < t.class_count; i++) {
+    Serial.print(t.class_hits[i]);
+    if (i + 1 < t.class_count) Serial.print(',');
+  }
+  Serial.print(']');
 
   // psix: data bits packed to hex (0/1 indices only).
   Serial.print(";psix=");

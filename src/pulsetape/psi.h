@@ -58,6 +58,10 @@ class PulseSpaceIndex {
   uint16_t bucketMin(uint8_t i) const { return micro_min_[i]; }
   uint16_t bucketMax(uint8_t i) const { return micro_max_[i]; }
 
+  // How many pulse/space elements landed in this class. Low counts flag a one-off
+  // sync symbol or a noise spike; high counts are the data classes.
+  uint16_t bucketHits(uint8_t i) const { return micro_count_[i]; }
+
   // Compare two nibble strings for repeat detection. Returns true when equal.
   static bool nibblesEqual(const uint8_t* a, uint16_t a_len,
                            const uint8_t* b, uint16_t b_len);
@@ -71,6 +75,7 @@ class PulseSpaceIndex {
 
   uint16_t micro_min_[PSI_MICRO_ELEMENTS];
   uint16_t micro_max_[PSI_MICRO_ELEMENTS];
+  uint16_t micro_count_[PSI_MICRO_ELEMENTS];  // elements seen per class
   uint8_t  bucket_count_;
 
   uint8_t  nibbles_[PSI_MAX_NIBBLES];

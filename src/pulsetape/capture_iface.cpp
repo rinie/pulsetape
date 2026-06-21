@@ -34,6 +34,7 @@ void FrameAssembler::finalizeFrame(uint32_t now_ms) {
     for (uint8_t i = 0; i < current_.class_count; i++) {
       current_.class_min[i] = psi_.bucketMin(i);
       current_.class_max[i] = psi_.bucketMax(i);
+      current_.class_hits[i] = psi_.bucketHits(i);
     }
     current_.timestamp_ms = now_ms;
 

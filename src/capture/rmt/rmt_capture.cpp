@@ -13,6 +13,12 @@ static const uint8_t RMT_CLK_DIV = 80;
 bool RmtCapture::begin(uint8_t data_pin) {
     rmt_config_t cfg = RMT_DEFAULT_CONFIG_RX((gpio_num_t)data_pin, kChannel);
     cfg.clk_div = RMT_CLK_DIV;
+    // Each RMT memory block holds 64 symbols = 128 edges; the default 1 block caps
+    // a frame at 128 edges (NewKAKU ~132 was being truncated!). Use 4 blocks ->
+    // 256 symbols = 512 edges, matching TELEGRAM_MAX_PULSES. (Channel 0 borrows
+    // blocks 0-3; we use no other RMT channels. Long HVAC frames would need more
+    // blocks + larger PSI buffers — see long_packets.md.)
+    cfg.mem_block_num = 4;
     cfg.rx_config.filter_en          = true;
     cfg.rx_config.filter_ticks_thresh = (uint8_t)PULSE_MIN_US;    // 50 ticks @ 1MHz = 50 us
     cfg.rx_config.idle_threshold      = (uint16_t)FRAME_GAP_US;   // 8000 ticks @ 1MHz = 8 ms
