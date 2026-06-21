@@ -31,6 +31,13 @@ struct RawTelegram {
 
   uint8_t  nibbles[PSI_MAX_NIBBLES];     // repeat fingerprint (from PulseSpaceIndex)
   uint16_t nibble_count;
+
+  // Timing-class table: the per-class duration window (us), ascending by duration
+  // after normalization (class 0 = shortest). This is the "pulse length per index
+  // value" — enough to interpret the nibble string without the full pulse list.
+  uint8_t  class_count;
+  uint16_t class_min[PSI_MICRO_ELEMENTS];
+  uint16_t class_max[PSI_MICRO_ELEMENTS];
 };
 
 // Tuning thresholds. The app populates this from the board layer.
