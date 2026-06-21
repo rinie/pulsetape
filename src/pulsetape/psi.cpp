@@ -38,16 +38,19 @@ void PulseSpaceIndex::normalize() {
     nibbles_[i] = (uint8_t)((p << 4) | s);
   }
 
-  // Reorder the bucket windows to match, so bucketMin(0) is the shortest class.
+  // Reorder the bucket windows + hit counts to match, so index 0 is the shortest.
   uint16_t tmin[PSI_MICRO_ELEMENTS];
   uint16_t tmax[PSI_MICRO_ELEMENTS];
+  uint16_t tcnt[PSI_MICRO_ELEMENTS];
   for (uint8_t k = 0; k < bucket_count_; k++) {
     tmin[k] = micro_min_[order[k]];
     tmax[k] = micro_max_[order[k]];
+    tcnt[k] = micro_count_[order[k]];
   }
   for (uint8_t k = 0; k < bucket_count_; k++) {
     micro_min_[k] = tmin[k];
     micro_max_[k] = tmax[k];
+    micro_count_[k] = tcnt[k];
   }
 }
 
@@ -67,6 +70,7 @@ uint8_t PulseSpaceIndex::indexOf(uint16_t value) {
   // 1. Exact range match: value already inside a bucket window.
   for (uint8_t i = 0; i < bucket_count_; i++) {
     if (micro_min_[i] <= value && value <= micro_max_[i]) {
+      micro_count_[i]++;
       return i;
     }
   }
@@ -91,6 +95,7 @@ uint8_t PulseSpaceIndex::indexOf(uint16_t value) {
   if (best != PSI_OVERFLOW) {
     if (value < micro_min_[best]) micro_min_[best] = value;
     if (value > micro_max_[best]) micro_max_[best] = value;
+    micro_count_[best]++;
     return best;
   }
 
@@ -99,6 +104,7 @@ uint8_t PulseSpaceIndex::indexOf(uint16_t value) {
     uint8_t i = bucket_count_++;
     micro_min_[i] = value;
     micro_max_[i] = value;
+    micro_count_[i] = 1;
     return i;
   }
 
