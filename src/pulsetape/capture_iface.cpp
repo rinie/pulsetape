@@ -17,6 +17,12 @@ void FrameAssembler::resetFrame() {
 }
 
 void FrameAssembler::finalizeFrame(uint32_t now_ms) {
+  // A frame ends on a HIGH whose trailing LOW is the inter-frame gap, so an odd
+  // number of durations leaves one unpaired pulse. Drop it from the reported count
+  // so count == the classified pair-elements (sum of the per-class counts); it
+  // carries no pair and never reached psNibbleIndex anyway.
+  if (have_pending_ && current_.count > 0) current_.count--;
+
   if (current_.count >= cfg_.min_pulses) {
     // Rank timing classes by duration (0 = shortest) so the fingerprint is
     // canonical, then snapshot it. Both this frame and the ring entries are
