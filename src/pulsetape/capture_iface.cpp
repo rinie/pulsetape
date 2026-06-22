@@ -8,6 +8,8 @@ void FrameAssembler::resetFrame() {
   current_.nibble_count = 0;
   current_.repeat_count = 0;
   current_.forwarded = 0;
+  current_.released = 0;
+  current_.event = 0;
   current_.rssi = -1;  // SRX882S has no RSSI
   psi_.reset();
   have_pending_ = false;
@@ -61,6 +63,12 @@ void FrameAssembler::finalizeFrame(uint32_t now_ms) {
 void FrameAssembler::onEvent(const CaptureEvent& ev, uint32_t now_ms) {
   if (ev.type == CaptureEvent::FRAME_GAP) {
     finalizeFrame(now_ms);
+    // Frame gaps also arrive on idle ticks, so this drives the window-close
+    // "released" events (FORWARD_LAST/_BOTH) with their true repeat totals.
+    RawTelegram* r;
+    while ((r = repeats_.takeExpired(cfg_, now_ms)) != nullptr) {
+      if (sink_) sink_(*r, sink_ctx_);
+    }
     return;
   }
 

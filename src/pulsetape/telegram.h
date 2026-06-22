@@ -20,6 +20,15 @@
 // Number of recent telegrams kept for repeat matching.
 #define REPEAT_RING_SIZE 8
 
+// When to forward a confirmed telegram downstream:
+#define FORWARD_LAST   0   // once at window close, with the true repeat total (default)
+#define FORWARD_SECOND 1   // once the instant repeat_min_count is reached (low latency)
+#define FORWARD_BOTH   2   // both: a "pressed" event at the threshold + "released" at close
+
+// Event reported with a forwarded telegram (RawTelegram.event):
+#define TELEGRAM_PRESSED  1   // confirmed (threshold reached) — start of a press
+#define TELEGRAM_RELEASED 2   // window closed — end of press, repeat_count = true total
+
 // A captured telegram: raw durations plus its nibble fingerprint.
 struct RawTelegram {
   uint16_t pulses[TELEGRAM_MAX_PULSES];  // microseconds, HIGH then LOW alternating
@@ -27,7 +36,9 @@ struct RawTelegram {
   uint32_t timestamp_ms;                 // capture time (caller-supplied clock)
   int8_t   rssi;                         // -dBm if available, else -1
   uint8_t  repeat_count;                 // times this fingerprint was seen
-  uint8_t  forwarded;                    // 1 once emitted (suppresses further repeats)
+  uint8_t  forwarded;                    // 1 once the "pressed" event has fired
+  uint8_t  released;                     // 1 once the "released" event has fired
+  uint8_t  event;                        // TELEGRAM_PRESSED / TELEGRAM_RELEASED
 
   uint8_t  nibbles[PSI_MAX_NIBBLES];     // repeat fingerprint (from PulseSpaceIndex)
   uint16_t nibble_count;
@@ -55,6 +66,7 @@ struct TelegramConfig {
                               // (transmission-end/boundary jitter); raw pulses kept
   uint8_t  max_class_pct;     // reject the frame if one timing class is >= this %
                               // of all elements (degenerate = noise/carrier, not data)
+  uint8_t  forward_mode;      // FORWARD_LAST / _SECOND / _BOTH
 };
 
 // Quality filter. Rejects telegrams that are too short, have too many
@@ -70,14 +82,23 @@ class RepeatDetector {
     for (uint8_t i = 0; i < REPEAT_RING_SIZE; i++) {
       ring_[i].nibble_count = 0;
       ring_[i].forwarded = 0;
+      ring_[i].released = 0;
     }
   }
 
-  // Offer a freshly captured telegram. Updates repeat_count (on t and in the
-  // ring) and returns true EXACTLY ONCE per telegram — when its repeat_count
-  // first reaches cfg.repeat_min_count. Further repeats inside the window return
-  // false (already forwarded); a fresh occurrence after the window forwards again.
+  // Offer a freshly captured telegram. Updates its repeat_count in the ring.
+  // Returns true (with t.event = TELEGRAM_PRESSED) only in FORWARD_SECOND/_BOTH
+  // mode, the first time repeat_count reaches cfg.repeat_min_count — the immediate
+  // "pressed" event. In FORWARD_LAST mode it always returns false (the telegram is
+  // forwarded later, by takeExpired).
   bool offer(RawTelegram& t, const TelegramConfig& cfg, uint32_t now_ms);
+
+  // Drain the next telegram whose repeat window has closed and that should fire a
+  // "released" event (FORWARD_LAST/_BOTH, repeat_count >= min). Sets its
+  // event = TELEGRAM_RELEASED and repeat_count = the true total. Returns nullptr
+  // when none remain. Call repeatedly (e.g. each frame/idle tick) with the current
+  // time; the caller forwards each returned telegram to the sink.
+  RawTelegram* takeExpired(const TelegramConfig& cfg, uint32_t now_ms);
 
  private:
   RawTelegram* find(const RawTelegram& t, const TelegramConfig& cfg, uint32_t now_ms);
