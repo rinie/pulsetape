@@ -51,6 +51,7 @@ RawTelegram* RepeatDetector::find(const RawTelegram& t, const TelegramConfig& cf
   for (uint8_t i = 0; i < REPEAT_RING_SIZE; i++) {
     RawTelegram* r = &ring_[i];
     if (r->nibble_count == 0) continue;
+    if (r->released) continue;   // already closed out — a re-press starts fresh
     if ((now_ms - r->timestamp_ms) > cfg.repeat_window_ms) continue;
     if (PulseSpaceIndex::nibblesEqual(r->nibbles, r->nibble_count,
                                       t.nibbles, t.nibble_count)) {
@@ -67,10 +68,12 @@ bool RepeatDetector::offer(RawTelegram& t, const TelegramConfig& cfg, uint32_t n
     existing->repeat_count++;
     existing->timestamp_ms = now_ms;
     t.repeat_count = existing->repeat_count;
-    // Forward exactly once: the first time we reach the threshold and haven't
-    // forwarded this telegram yet. Later repeats in the window stay silent.
-    if (!existing->forwarded && existing->repeat_count >= cfg.repeat_min_count) {
+    // "Pressed" event (FORWARD_SECOND/_BOTH): fire once at the threshold.
+    if (cfg.forward_mode != FORWARD_LAST &&
+        !existing->forwarded && existing->repeat_count >= cfg.repeat_min_count) {
       existing->forwarded = 1;
+      existing->event = TELEGRAM_PRESSED;
+      t.event = TELEGRAM_PRESSED;
       return true;
     }
     return false;
@@ -82,10 +85,33 @@ bool RepeatDetector::offer(RawTelegram& t, const TelegramConfig& cfg, uint32_t n
   *slot = t;
   slot->repeat_count = 1;
   slot->timestamp_ms = now_ms;
+  slot->forwarded = 0;
+  slot->released = 0;
   t.repeat_count = 1;
 
-  // Forward immediately only if a single sighting already meets the threshold.
-  bool forward_now = (cfg.repeat_min_count <= 1);
-  slot->forwarded = forward_now ? 1 : 0;
-  return forward_now;
+  // Single-sighting fast path: only when min_count <= 1 and we emit a pressed event.
+  if (cfg.forward_mode != FORWARD_LAST && cfg.repeat_min_count <= 1) {
+    slot->forwarded = 1;
+    slot->event = TELEGRAM_PRESSED;
+    t.event = TELEGRAM_PRESSED;
+    return true;
+  }
+  return false;
+}
+
+RawTelegram* RepeatDetector::takeExpired(const TelegramConfig& cfg, uint32_t now_ms) {
+  for (uint8_t i = 0; i < REPEAT_RING_SIZE; i++) {
+    RawTelegram* r = &ring_[i];
+    if (r->nibble_count == 0 || r->released) continue;
+    if ((now_ms - r->timestamp_ms) <= cfg.repeat_window_ms) continue;  // window still open
+
+    if (cfg.forward_mode != FORWARD_SECOND && r->repeat_count >= cfg.repeat_min_count) {
+      r->released = 1;                  // skipped by find() hereafter; freed on reuse
+      r->event = TELEGRAM_RELEASED;     // repeat_count is the true total
+      return r;
+    }
+    // Expired with no "released" event to emit (SECOND mode, or never confirmed): retire.
+    r->nibble_count = 0;
+  }
+  return nullptr;
 }

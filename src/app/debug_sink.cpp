@@ -59,6 +59,11 @@ void debug_print_telegram(const RawTelegram& t) {
   Serial.print(";repeats=");
   Serial.print(t.repeat_count);
 
+  // state: pressed (confirmed at threshold) or released (window closed, true total).
+  Serial.print(";state=");
+  Serial.print(t.event == TELEGRAM_PRESSED ? "pressed"
+             : t.event == TELEGRAM_RELEASED ? "released" : "?");
+
   // micros: pulse length per index value, ascending ranges (position = index).
   Serial.print(";micros=[");
   for (uint8_t i = 0; i < t.class_count; i++) {

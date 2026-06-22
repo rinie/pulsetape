@@ -29,6 +29,7 @@ static TelegramConfig g_cfg = {
     /* repeat_window_ms */ REPEAT_WINDOW_MS,
     /* tail_trim_pairs  */ TAIL_TRIM_PAIRS,
     /* max_class_pct    */ MAX_CLASS_PCT,
+    /* forward_mode     */ FORWARD_MODE,
 };
 
 // ===================================================================== ESP32

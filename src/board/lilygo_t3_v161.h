@@ -77,6 +77,8 @@
                             // (last bits wobble at the frame boundary); tune per captures
 #define MAX_CLASS_PCT 90    // reject if one timing class is >= this % of elements
                             // (degenerate = noise/stuck carrier, not a telegram)
+#define FORWARD_MODE FORWARD_LAST  // FORWARD_LAST (true repeat total, at window close)
+                                   // / FORWARD_SECOND (immediate) / FORWARD_BOTH
 
 // --- Onboard SX1276/78 pins, sourced from the board variant's pins_arduino.h ---
 // Single source of truth: the right board gives the right pins, and resolves the
