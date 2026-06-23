@@ -59,6 +59,13 @@ void debug_print_telegram(const RawTelegram& t) {
   Serial.print(";repeats=");
   Serial.print(t.repeat_count);
 
+  // gap: silence to the previous repeat in ms (inter-telegram space). Only
+  // present once a repeat has been seen — a lone frame has nothing to measure.
+  if (t.gap_ms > 0) {
+    Serial.print(";gap=");
+    Serial.print(t.gap_ms);
+  }
+
   // state: pressed (confirmed at threshold) or released (window closed, true total).
   Serial.print(";state=");
   Serial.print(t.event == TELEGRAM_PRESSED ? "pressed"

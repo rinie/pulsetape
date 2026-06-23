@@ -39,6 +39,7 @@ struct RawTelegram {
   uint8_t  forwarded;                    // 1 once the "pressed" event has fired
   uint8_t  released;                     // 1 once the "released" event has fired
   uint8_t  event;                        // TELEGRAM_PRESSED / TELEGRAM_RELEASED
+  uint16_t gap_ms;                       // silence to the previous repeat (ms); 0 if first sighting
 
   uint8_t  nibbles[PSI_MAX_NIBBLES];     // repeat fingerprint (from PulseSpaceIndex)
   uint16_t nibble_count;
@@ -83,6 +84,7 @@ class RepeatDetector {
       ring_[i].nibble_count = 0;
       ring_[i].forwarded = 0;
       ring_[i].released = 0;
+      ring_[i].gap_ms = 0;
     }
   }
 

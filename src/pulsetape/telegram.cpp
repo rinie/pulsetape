@@ -66,8 +66,12 @@ bool RepeatDetector::offer(RawTelegram& t, const TelegramConfig& cfg, uint32_t n
 
   if (existing != nullptr) {
     existing->repeat_count++;
+    // Silence since the previous sighting of this fingerprint — the inter-repeat
+    // gap. Capture it before overwriting the timestamp; keep the most recent one.
+    existing->gap_ms = (uint16_t)(now_ms - existing->timestamp_ms);
     existing->timestamp_ms = now_ms;
     t.repeat_count = existing->repeat_count;
+    t.gap_ms = existing->gap_ms;
     // "Pressed" event (FORWARD_SECOND/_BOTH): fire once at the threshold.
     if (cfg.forward_mode != FORWARD_LAST &&
         !existing->forwarded && existing->repeat_count >= cfg.repeat_min_count) {
@@ -87,7 +91,9 @@ bool RepeatDetector::offer(RawTelegram& t, const TelegramConfig& cfg, uint32_t n
   slot->timestamp_ms = now_ms;
   slot->forwarded = 0;
   slot->released = 0;
+  slot->gap_ms = 0;
   t.repeat_count = 1;
+  t.gap_ms = 0;
 
   // Single-sighting fast path: only when min_count <= 1 and we emit a pressed event.
   if (cfg.forward_mode != FORWARD_LAST && cfg.repeat_min_count <= 1) {
