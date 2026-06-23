@@ -26,7 +26,7 @@ static TelegramConfig g_cfg = {
     /* pulse_max_us     */ PULSE_MAX_US,
     /* min_pulses       */ MIN_PULSES,
     /* repeat_min_count */ REPEAT_MIN_COUNT,
-    /* repeat_window_ms */ REPEAT_WINDOW_MS,
+    /* repeat_window_us */ REPEAT_WINDOW_US,
     /* tail_trim_pairs  */ TAIL_TRIM_PAIRS,
     /* max_class_pct    */ MAX_CLASS_PCT,
     /* forward_mode     */ FORWARD_MODE,
@@ -101,7 +101,7 @@ void setup() {
 
 void loop() {
   CaptureEvent ev = g_capture.next();   // bounded-blocking read of the RMT ring buffer
-  g_assembler.onEvent(ev, millis());
+  g_assembler.onEvent(ev, micros());    // generic core works in microseconds throughout
 
 #ifdef ONBOARD_LED
   if (g_led_off_at != 0 && (int32_t)(millis() - g_led_off_at) >= 0) {
@@ -153,7 +153,7 @@ void setup1() {
 
 void loop1() {
   CaptureEvent ev = g_capture.next();   // blocks on the PIO FIFO
-  g_assembler.onEvent(ev, millis());
+  g_assembler.onEvent(ev, micros());    // generic core works in microseconds throughout
 }
 
 #else

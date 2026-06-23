@@ -59,13 +59,13 @@ class FrameAssembler {
     resetFrame();
   }
 
-  // Feed one event. `now_ms` is the current time from the caller's clock; it is
+  // Feed one event. `now_us` is the current time from the caller's clock; it is
   // used only for the repeat window (this layer never reads a clock itself).
-  void onEvent(const CaptureEvent& ev, uint32_t now_ms);
+  void onEvent(const CaptureEvent& ev, uint32_t now_us);
 
  private:
   void resetFrame();
-  void finalizeFrame(uint32_t now_ms);
+  void finalizeFrame(uint32_t now_us);
 
   const TelegramConfig& cfg_;
   uint16_t              frame_gap_us_;

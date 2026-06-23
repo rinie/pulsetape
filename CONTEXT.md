@@ -109,7 +109,7 @@ De nibble-string is de repeat-sleutel — geen aparte hash nodig:
 
 Instellingen:
 - `REPEAT_MIN_COUNT 2` — minimaal 2 identieke frames voor doorsturen
-- `REPEAT_WINDOW_MS 800` — window waarbinnen frames als herhaling tellen
+- `REPEAT_WINDOW_US 800000` — window (800 ms) waarbinnen frames als herhaling tellen
 - `FRAME_GAP_US 8000` — stilte die een frame afsluit (Oregon: ~8ms, KAKU: ~10ms)
 
 ---

@@ -47,12 +47,12 @@ bool telegram_valid(const RawTelegram& t, const TelegramConfig& cfg) {
 }
 
 RawTelegram* RepeatDetector::find(const RawTelegram& t, const TelegramConfig& cfg,
-                                  uint32_t now_ms) {
+                                  uint32_t now_us) {
   for (uint8_t i = 0; i < REPEAT_RING_SIZE; i++) {
     RawTelegram* r = &ring_[i];
     if (r->nibble_count == 0) continue;
     if (r->released) continue;   // already closed out — a re-press starts fresh
-    if ((now_ms - r->timestamp_ms) > cfg.repeat_window_ms) continue;
+    if ((now_us - r->timestamp_us) > cfg.repeat_window_us) continue;
     if (PulseSpaceIndex::nibblesEqual(r->nibbles, r->nibble_count,
                                       t.nibbles, t.nibble_count)) {
       return r;
@@ -61,17 +61,17 @@ RawTelegram* RepeatDetector::find(const RawTelegram& t, const TelegramConfig& cf
   return nullptr;
 }
 
-bool RepeatDetector::offer(RawTelegram& t, const TelegramConfig& cfg, uint32_t now_ms) {
-  RawTelegram* existing = find(t, cfg, now_ms);
+bool RepeatDetector::offer(RawTelegram& t, const TelegramConfig& cfg, uint32_t now_us) {
+  RawTelegram* existing = find(t, cfg, now_us);
 
   if (existing != nullptr) {
     existing->repeat_count++;
     // Silence since the previous sighting of this fingerprint — the inter-repeat
     // gap. Capture it before overwriting the timestamp; keep the most recent one.
-    existing->gap_ms = (uint16_t)(now_ms - existing->timestamp_ms);
-    existing->timestamp_ms = now_ms;
+    existing->gap_us = now_us - existing->timestamp_us;
+    existing->timestamp_us = now_us;
     t.repeat_count = existing->repeat_count;
-    t.gap_ms = existing->gap_ms;
+    t.gap_us = existing->gap_us;
     // "Pressed" event (FORWARD_SECOND/_BOTH): fire once at the threshold.
     if (cfg.forward_mode != FORWARD_LAST &&
         !existing->forwarded && existing->repeat_count >= cfg.repeat_min_count) {
@@ -88,12 +88,12 @@ bool RepeatDetector::offer(RawTelegram& t, const TelegramConfig& cfg, uint32_t n
   head_++;
   *slot = t;
   slot->repeat_count = 1;
-  slot->timestamp_ms = now_ms;
+  slot->timestamp_us = now_us;
   slot->forwarded = 0;
   slot->released = 0;
-  slot->gap_ms = 0;
+  slot->gap_us = 0;
   t.repeat_count = 1;
-  t.gap_ms = 0;
+  t.gap_us = 0;
 
   // Single-sighting fast path: only when min_count <= 1 and we emit a pressed event.
   if (cfg.forward_mode != FORWARD_LAST && cfg.repeat_min_count <= 1) {
@@ -105,11 +105,11 @@ bool RepeatDetector::offer(RawTelegram& t, const TelegramConfig& cfg, uint32_t n
   return false;
 }
 
-RawTelegram* RepeatDetector::takeExpired(const TelegramConfig& cfg, uint32_t now_ms) {
+RawTelegram* RepeatDetector::takeExpired(const TelegramConfig& cfg, uint32_t now_us) {
   for (uint8_t i = 0; i < REPEAT_RING_SIZE; i++) {
     RawTelegram* r = &ring_[i];
     if (r->nibble_count == 0 || r->released) continue;
-    if ((now_ms - r->timestamp_ms) <= cfg.repeat_window_ms) continue;  // window still open
+    if ((now_us - r->timestamp_us) <= cfg.repeat_window_us) continue;  // window still open
 
     if (cfg.forward_mode != FORWARD_SECOND && r->repeat_count >= cfg.repeat_min_count) {
       r->released = 1;                  // skipped by find() hereafter; freed on reuse
