@@ -60,12 +60,15 @@ void debugPrintTelegram(const RawTelegram& t) {
   Serial.print(";repeats=");
   Serial.print(t.repeatCount);
 
-  // gap: silence to the previous repeat in microseconds (inter-telegram space),
-  // same unit as micros[] below. Only present once a repeat has been seen — a
-  // lone frame has nothing to measure.
+  // gap: silence to the previous repeat (inter-telegram space). Stored in us, but
+  // it's sampled in the capture loop rather than at the RF edge, so its real
+  // resolution is ~ms — round to ms and label it so the digits don't imply false
+  // precision (unlike micros[] below, which are true hardware microseconds). Only
+  // present once a repeat has been seen — a lone frame has nothing to measure.
   if (t.gapUs > 0) {
     Serial.print(";gap=");
-    Serial.print(t.gapUs);
+    Serial.print((t.gapUs + 500) / 1000);  // round to nearest ms
+    Serial.print("ms");
   }
 
   // state: pressed (confirmed at threshold) or released (window closed, true total).
