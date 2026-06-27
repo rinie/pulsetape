@@ -23,11 +23,11 @@
 // One event from a capture backend.
 struct CaptureEvent {
   enum Type : uint8_t {
-    DURATION,   // duration_us holds a measured HIGH or LOW edge length
+    DURATION,   // durationUs holds a measured HIGH or LOW edge length
     FRAME_GAP   // a long silence / overflow closed the current frame
   };
   Type     type;
-  uint16_t duration_us;  // meaningful only when type == DURATION
+  uint16_t durationUs;  // meaningful only when type == DURATION
 };
 
 // Abstract capture backend. Implementations live under src/capture/<backend>/.
@@ -35,8 +35,8 @@ class ICaptureBackend {
  public:
   virtual ~ICaptureBackend() {}
 
-  // Bring up the capture hardware on `data_pin`. Returns false on failure.
-  virtual bool begin(uint8_t data_pin) = 0;
+  // Bring up the capture hardware on `dataPin`. Returns false on failure.
+  virtual bool begin(uint8_t dataPin) = 0;
 
   // Block until the next event is available and return it. Runs on the capture
   // core's loop. Implementations must convert raw ticks to microseconds and
@@ -51,32 +51,32 @@ typedef void (*TelegramSink)(const RawTelegram& telegram, void* ctx);
 // Turns a CaptureEvent stream into validated, de-duplicated telegrams.
 class FrameAssembler {
  public:
-  // `frame_gap_us`: a DURATION longer than this on a space slot also closes the
+  // `frameGapUs`: a DURATION longer than this on a space slot also closes the
   // frame (belt-and-suspenders alongside the backend's FRAME_GAP marker).
-  FrameAssembler(const TelegramConfig& cfg, uint16_t frame_gap_us,
-                 TelegramSink sink, void* sink_ctx)
-      : cfg_(cfg), frame_gap_us_(frame_gap_us), sink_(sink), sink_ctx_(sink_ctx) {
+  FrameAssembler(const TelegramConfig& cfg, uint16_t frameGapUs,
+                 TelegramSink sink, void* sinkCtx)
+      : cfg(cfg), frameGapUs(frameGapUs), sink(sink), sinkCtx(sinkCtx) {
     resetFrame();
   }
 
-  // Feed one event. `now_us` is the current time from the caller's clock; it is
+  // Feed one event. `nowUs` is the current time from the caller's clock; it is
   // used only for the repeat window (this layer never reads a clock itself).
-  void onEvent(const CaptureEvent& ev, uint32_t now_us);
+  void onEvent(const CaptureEvent& ev, uint32_t nowUs);
 
  private:
   void resetFrame();
-  void finalizeFrame(uint32_t now_us);
+  void finalizeFrame(uint32_t nowUs);
 
-  const TelegramConfig& cfg_;
-  uint16_t              frame_gap_us_;
-  TelegramSink          sink_;
-  void*                 sink_ctx_;
+  const TelegramConfig& cfg;
+  uint16_t              frameGapUs;
+  TelegramSink          sink;
+  void*                 sinkCtx;
 
-  RawTelegram      current_;
-  PulseSpaceIndex  psi_;
-  RepeatDetector   repeats_;
-  uint16_t         pending_pulse_us_;  // HIGH half waiting for its LOW partner
-  bool             have_pending_;
+  RawTelegram      current;
+  PulseSpaceIndex  psi;
+  RepeatDetector   repeats;
+  uint16_t         pendingPulseUs;  // HIGH half waiting for its LOW partner
+  bool             havePending;
 };
 
 #endif // PULSETAPE_CAPTURE_IFACE_H

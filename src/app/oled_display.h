@@ -9,15 +9,15 @@
 
 #include "../pulsetape/telegram.h"
 
-// Call once in setup(). sx1278_ok is the return value of sx1278_ook_begin(),
+// Call once in setup(). sx1278Ok is the return value of sx1278OokBegin(),
 // or false when using an external receiver (no SX1278 frontend).
-void oled_begin(bool sx1278_ok);
+void oledBegin(bool sx1278Ok);
 
 // Call from the telegram sink to refresh the display with the latest telegram.
-void oled_show_telegram(const RawTelegram& t);
+void oledShowTelegram(const RawTelegram& t);
 
 // Call from the interrupt-capture path when a raw frame is detected.
-void oled_show_frame(uint16_t pulse_count, uint32_t frame_num, int8_t rssi_dbm);
+void oledShowFrame(uint16_t pulseCount, uint32_t frameNum, int8_t rssiDbm);
 
 #endif // ARDUINO_ARCH_ESP32
 #endif // PULSETAPE_OLED_DISPLAY_H

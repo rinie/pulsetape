@@ -12,6 +12,6 @@
 
 // Encode `t` with COBS framing and write it to the UART link to the ESP32-S3.
 // TODO: implement (COBS encode + UART write + 0x00 frame delimiter).
-void cobs_uart_send(const RawTelegram& t);
+void cobsUartSend(const RawTelegram& t);
 
 #endif // PULSETAPE_COBS_UART_H

@@ -31,12 +31,12 @@
 // Configure the SX1278 for OOK continuous RX with data on DIO2. Returns false if
 // the chip doesn't answer (RegVersion mismatch). Call once in setup() before the
 // RMT backend begins capturing DIO2's GPIO.
-bool sx1278_ook_begin(uint8_t sck, uint8_t miso, uint8_t mosi,
-                      uint8_t nss, uint8_t rst, uint32_t freq_hz);
+bool sx1278OokBegin(uint8_t sck, uint8_t miso, uint8_t mosi,
+                    uint8_t nss, uint8_t rst, uint32_t freqHz);
 
 // Read current RSSI (FSK/OOK mode, RegRssiValue 0x11). Returns -dBm (positive).
-// Call only after sx1278_ook_begin() and while in RX mode.
-uint8_t sx1278_rssi();
+// Call only after sx1278OokBegin() and while in RX mode.
+uint8_t sx1278Rssi();
 
 #endif // ARDUINO_ARCH_ESP32
 #endif // PULSETAPE_SX1278_OOK_H

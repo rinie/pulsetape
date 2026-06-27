@@ -12,9 +12,9 @@
 
 class TxPio {
  public:
-  // Bring up the TX state machine on `data_pin`.
+  // Bring up the TX state machine on `dataPin`.
   // TODO: implement (load tx .pio program, configure SM as output).
-  bool begin(uint8_t data_pin);
+  bool begin(uint8_t dataPin);
 
   // Replay a pulse/space sequence (microseconds), HIGH then LOW alternating.
   // TODO: implement (feed durations to the SM TX FIFO).

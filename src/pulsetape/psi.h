@@ -40,7 +40,7 @@ class PulseSpaceIndex {
   // Feed one pulse/space pair (microseconds). Returns the packed nibble byte
   // (pulseIndex << 4) | spaceIndex and appends it to the nibble string.
   // Once the nibble string is full, further pairs are quantised but not stored.
-  uint8_t addPair(uint16_t pulse_us, uint16_t space_us);
+  uint8_t addPair(uint16_t pulseUs, uint16_t spaceUs);
 
   // Re-rank timing classes by ascending duration (class 0 = shortest) and rewrite
   // the whole nibble string through that ranking. Call once after the last
@@ -51,32 +51,32 @@ class PulseSpaceIndex {
   void normalize();
 
   // Number of nibble bytes accumulated (== number of pulse/space pairs stored).
-  uint16_t nibbleCount() const { return nibble_count_; }
+  uint16_t nibbleCount() const { return numNibbles; }
 
   // Pointer to the nibble string (length == nibbleCount()).
-  const uint8_t* nibbles() const { return nibbles_; }
+  const uint8_t* nibbles() const { return nibbleBuf; }
 
   // Number of distinct timing buckets discovered so far.
-  uint8_t bucketCount() const { return bucket_count_; }
+  uint8_t bucketCount() const { return numBuckets; }
 
   // Inspect a bucket's adaptive window (for debug / protocol classification).
-  uint16_t bucketMin(uint8_t i) const { return micro_min_[i]; }
-  uint16_t bucketMax(uint8_t i) const { return micro_max_[i]; }
+  uint16_t bucketMin(uint8_t i) const { return microMin[i]; }
+  uint16_t bucketMax(uint8_t i) const { return microMax[i]; }
 
   // How many pulse/space elements landed in this class. Low counts flag a one-off
   // sync symbol or a noise spike; high counts are the data classes.
-  uint16_t bucketHits(uint8_t i) const { return micro_count_[i]; }
+  uint16_t bucketHits(uint8_t i) const { return microCount[i]; }
 
   // Of those, how many were pulses (the rest were spaces).
-  uint16_t bucketPulseHits(uint8_t i) const { return micro_pulse_[i]; }
+  uint16_t bucketPulseHits(uint8_t i) const { return microPulse[i]; }
 
   // Classify modulation from which side varies: PSI_DATA_P (only pulse varies),
   // PSI_DATA_S (only space varies), or PSI_DATA_PS (both). Call after the frame.
   uint8_t detectDataType() const;
 
   // Compare two nibble strings for repeat detection. Returns true when equal.
-  static bool nibblesEqual(const uint8_t* a, uint16_t a_len,
-                           const uint8_t* b, uint16_t b_len);
+  static bool nibblesEqual(const uint8_t* a, uint16_t aLen,
+                           const uint8_t* b, uint16_t bLen);
 
  private:
   // Quantise a single duration to a bucket index, growing/extending buckets.
@@ -85,14 +85,14 @@ class PulseSpaceIndex {
   // Tolerance window (us) for snapping a value onto an existing bucket edge.
   static uint16_t toleranceFor(uint16_t value);
 
-  uint16_t micro_min_[PSI_MICRO_ELEMENTS];
-  uint16_t micro_max_[PSI_MICRO_ELEMENTS];
-  uint16_t micro_count_[PSI_MICRO_ELEMENTS];  // elements seen per class
-  uint16_t micro_pulse_[PSI_MICRO_ELEMENTS];  // of which, pulses (rest are spaces)
-  uint8_t  bucket_count_;
+  uint16_t microMin[PSI_MICRO_ELEMENTS];
+  uint16_t microMax[PSI_MICRO_ELEMENTS];
+  uint16_t microCount[PSI_MICRO_ELEMENTS];  // elements seen per class
+  uint16_t microPulse[PSI_MICRO_ELEMENTS];  // of which, pulses (rest are spaces)
+  uint8_t  numBuckets;
 
-  uint8_t  nibbles_[PSI_MAX_NIBBLES];
-  uint16_t nibble_count_;
+  uint8_t  nibbleBuf[PSI_MAX_NIBBLES];
+  uint16_t numNibbles;
 };
 
 #endif // PULSETAPE_PSI_H

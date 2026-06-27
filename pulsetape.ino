@@ -21,15 +21,15 @@
 
 // Filled from the board layer; the one place board constants meet the generic
 // config struct. Shared by both targets.
-static TelegramConfig g_cfg = {
-    /* pulse_min_us     */ PULSE_MIN_US,
-    /* pulse_max_us     */ PULSE_MAX_US,
-    /* min_pulses       */ MIN_PULSES,
-    /* repeat_min_count */ REPEAT_MIN_COUNT,
-    /* repeat_window_us */ REPEAT_WINDOW_US,
-    /* tail_trim_pairs  */ TAIL_TRIM_PAIRS,
-    /* max_class_pct    */ MAX_CLASS_PCT,
-    /* forward_mode     */ FORWARD_MODE,
+static TelegramConfig cfg = {
+    /* pulseMinUs     */ PULSE_MIN_US,
+    /* pulseMaxUs     */ PULSE_MAX_US,
+    /* minPulses      */ MIN_PULSES,
+    /* repeatMinCount */ REPEAT_MIN_COUNT,
+    /* repeatWindowUs */ REPEAT_WINDOW_US,
+    /* tailTrimPairs  */ TAIL_TRIM_PAIRS,
+    /* maxClassPct    */ MAX_CLASS_PCT,
+    /* forwardMode    */ FORWARD_MODE,
 };
 
 // ===================================================================== ESP32
@@ -46,27 +46,27 @@ static TelegramConfig g_cfg = {
 // RMT captures the DIO2 edge train in hardware; FrameAssembler runs the generic
 // core (psNibbleIndex + telegram filter + repeat detection). RMT + its ISR do the
 // timing, so a single loop() on one core is enough.
-static RmtCapture g_capture;
+static RmtCapture capture;
 
 #ifdef ONBOARD_LED
 static const uint32_t LED_BLINK_MS = 40;
-static uint32_t g_led_off_at = 0;   // millis() deadline to switch the LED back off
+static uint32_t ledOffAt = 0;   // millis() deadline to switch the LED back off
 #endif
 
 // Sink: invoked for each telegram that passed repeat validation. Surface it on
 // every output the board offers — serial always, OLED + LED when the board has them.
-static void telegram_sink(const RawTelegram& t, void*) {
-  debug_print_telegram(t);
+static void telegramSink(const RawTelegram& t, void*) {
+  debugPrintTelegram(t);
 #if defined(BOARD_HAS_OLED)
-  oled_show_telegram(t);
+  oledShowTelegram(t);
 #endif
 #ifdef ONBOARD_LED
   digitalWrite(ONBOARD_LED, HIGH);
-  g_led_off_at = millis() + LED_BLINK_MS;
+  ledOffAt = millis() + LED_BLINK_MS;
 #endif
 }
 
-static FrameAssembler g_assembler(g_cfg, FRAME_GAP_US, telegram_sink, nullptr);
+static FrameAssembler assembler(cfg, FRAME_GAP_US, telegramSink, nullptr);
 
 void setup() {
   Serial.begin(115200);
@@ -75,18 +75,18 @@ void setup() {
   Serial.println("build " __DATE__ " " __TIME__ " | board " BOARD_NAME);
 
 #if USE_SX1278_FRONTEND
-  bool sx_ok = sx1278_ook_begin(SX1276_SCK, SX1276_MISO, SX1276_MOSI,
-                                SX1276_NSS, SX1276_RST, RF_FREQUENCY_HZ);
+  bool sxOk = sx1278OokBegin(SX1276_SCK, SX1276_MISO, SX1276_MOSI,
+                             SX1276_NSS, SX1276_RST, RF_FREQUENCY_HZ);
   Serial.print("SX1278 init: ");
-  Serial.println(sx_ok ? "OK" : "FAILED (check SPI wiring)");
+  Serial.println(sxOk ? "OK" : "FAILED (check SPI wiring)");
 #else
-  bool sx_ok = false;
+  bool sxOk = false;
 #endif
 
 #if defined(BOARD_HAS_OLED)
-  oled_begin(sx_ok);
+  oledBegin(sxOk);
 #else
-  (void)sx_ok;
+  (void)sxOk;
 #endif
 
 #ifdef ONBOARD_LED
@@ -94,19 +94,19 @@ void setup() {
   digitalWrite(ONBOARD_LED, LOW);
 #endif
 
-  g_capture.begin(RF_DATA_PIN);
+  capture.begin(RF_DATA_PIN);
   Serial.print("RMT capture on GPIO"); Serial.print(RF_DATA_PIN);
   Serial.println(" -> FrameAssembler (psNibbleIndex + repeat detection)");
 }
 
 void loop() {
-  CaptureEvent ev = g_capture.next();   // bounded-blocking read of the RMT ring buffer
-  g_assembler.onEvent(ev, micros());    // generic core works in microseconds throughout
+  CaptureEvent ev = capture.next();   // bounded-blocking read of the RMT ring buffer
+  assembler.onEvent(ev, micros());    // generic core works in microseconds throughout
 
 #ifdef ONBOARD_LED
-  if (g_led_off_at != 0 && (int32_t)(millis() - g_led_off_at) >= 0) {
+  if (ledOffAt != 0 && (int32_t)(millis() - ledOffAt) >= 0) {
     digitalWrite(ONBOARD_LED, LOW);
-    g_led_off_at = 0;
+    ledOffAt = 0;
   }
 #endif
 }
@@ -119,41 +119,41 @@ void loop() {
 
 #define QUEUE_DEPTH 4
 
-static queue_t       g_queue;
-static volatile bool g_queue_ready = false;
-static PioCapture    g_capture;  // defaults to pio0
+static queue_t       queue;
+static volatile bool queueReady = false;
+static PioCapture    capture;  // defaults to pio0
 
 // Sink: hand a forward-worthy telegram to core 0 via the queue. Non-blocking.
-static void queue_sink(const RawTelegram& t, void* ctx) {
+static void queueSink(const RawTelegram& t, void* ctx) {
   queue_t* q = static_cast<queue_t*>(ctx);
   queue_try_add(q, &t);
 }
-static FrameAssembler g_assembler(g_cfg, FRAME_GAP_US, queue_sink, &g_queue);
+static FrameAssembler assembler(cfg, FRAME_GAP_US, queueSink, &queue);
 
 // ---- Core 0 ----
 void setup() {
   Serial.begin(115200);
   Serial.println("\n=== PulseTape (main sketch) ===");
   Serial.println("build " __DATE__ " " __TIME__ " | board " BOARD_NAME);
-  queue_init(&g_queue, sizeof(RawTelegram), QUEUE_DEPTH);
-  g_queue_ready = true;
+  queue_init(&queue, sizeof(RawTelegram), QUEUE_DEPTH);
+  queueReady = true;
 }
 
 void loop() {
   RawTelegram t;
-  queue_remove_blocking(&g_queue, &t);
-  debug_print_telegram(t);
+  queue_remove_blocking(&queue, &t);
+  debugPrintTelegram(t);
 }
 
 // ---- Core 1 ----
 void setup1() {
-  while (!g_queue_ready) tight_loop_contents();  // wait for the queue
-  g_capture.begin(RF_DATA_PIN);
+  while (!queueReady) tight_loop_contents();  // wait for the queue
+  capture.begin(RF_DATA_PIN);
 }
 
 void loop1() {
-  CaptureEvent ev = g_capture.next();   // blocks on the PIO FIFO
-  g_assembler.onEvent(ev, micros());    // generic core works in microseconds throughout
+  CaptureEvent ev = capture.next();   // blocks on the PIO FIFO
+  assembler.onEvent(ev, micros());    // generic core works in microseconds throughout
 }
 
 #else

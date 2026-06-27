@@ -1,6 +1,6 @@
 // radio/sx1278_ook.cpp — see sx1278_ook.h.
 // OOK register values are aligned to a known-good dump from this exact board
-// (see comment in sx1278_ook_begin). The radio config is therefore proven; the
+// (see comment in sx1278OokBegin). The radio config is therefore proven; the
 // PulseTape capture/decode pipeline downstream is still unverified end-to-end.
 
 #if defined(ARDUINO_ARCH_ESP32)
@@ -36,26 +36,26 @@ static const uint8_t MODE_SLEEP   = 0x00;
 static const uint8_t MODE_STDBY   = 0x01;
 static const uint8_t MODE_RX_CONT = 0x05;
 
-static uint8_t s_nss;
+static uint8_t nssPin;
 
 static void writeReg(uint8_t reg, uint8_t val) {
-  digitalWrite(s_nss, LOW);
+  digitalWrite(nssPin, LOW);
   SPI.transfer(reg | 0x80);  // MSB set = write
   SPI.transfer(val);
-  digitalWrite(s_nss, HIGH);
+  digitalWrite(nssPin, HIGH);
 }
 
 static uint8_t readReg(uint8_t reg) {
-  digitalWrite(s_nss, LOW);
+  digitalWrite(nssPin, LOW);
   SPI.transfer(reg & 0x7F);  // MSB clear = read
   uint8_t val = SPI.transfer(0x00);
-  digitalWrite(s_nss, HIGH);
+  digitalWrite(nssPin, HIGH);
   return val;
 }
 
-bool sx1278_ook_begin(uint8_t sck, uint8_t miso, uint8_t mosi,
-                      uint8_t nss, uint8_t rst, uint32_t freq_hz) {
-  s_nss = nss;
+bool sx1278OokBegin(uint8_t sck, uint8_t miso, uint8_t mosi,
+                    uint8_t nss, uint8_t rst, uint32_t freqHz) {
+  nssPin = nss;
   pinMode(nss, OUTPUT);
   digitalWrite(nss, HIGH);
   pinMode(rst, OUTPUT);
@@ -87,7 +87,7 @@ bool sx1278_ook_begin(uint8_t sck, uint8_t miso, uint8_t mosi,
   Serial.print("SX1278 opmode_after_stdby=0x"); Serial.println(readReg(REG_OP_MODE), HEX);
 
   // Carrier frequency: Frf = freq * 2^19 / FXOSC, FXOSC = 32 MHz.
-  uint32_t frf = (uint32_t)(((uint64_t)freq_hz << 19) / 32000000ULL);
+  uint32_t frf = (uint32_t)(((uint64_t)freqHz << 19) / 32000000ULL);
   writeReg(REG_FRF_MSB, (uint8_t)(frf >> 16));
   writeReg(REG_FRF_MID, (uint8_t)(frf >> 8));
   writeReg(REG_FRF_LSB, (uint8_t)(frf));
@@ -182,7 +182,7 @@ bool sx1278_ook_begin(uint8_t sck, uint8_t miso, uint8_t mosi,
   return true;
 }
 
-uint8_t sx1278_rssi() {
+uint8_t sx1278Rssi() {
   SPI.beginTransaction(SPISettings(8000000, MSBFIRST, SPI_MODE0));
   uint8_t v = readReg(0x11);  // RegRssiValue (FSK/OOK mode)
   SPI.endTransaction();
