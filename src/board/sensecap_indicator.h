@@ -34,7 +34,7 @@
 // --- Telegram quality / repeat tuning ---
 #define MIN_PULSES 8          // fewer pulses than this is noise, not a telegram
 #define REPEAT_MIN_COUNT 2    // identical frames required before forwarding
-#define REPEAT_WINDOW_MS 800  // frames within this window count as repeats
+#define REPEAT_WINDOW_US 800000UL  // 800 ms — frames within this window count as repeats
 #define TAIL_TRIM_PAIRS 2     // trailing nibble pairs dropped from the fingerprint
 #define MAX_CLASS_PCT 90      // reject if one timing class is >= this % of elements
 #define FORWARD_MODE FORWARD_LAST  // true repeat total at window close (or _SECOND / _BOTH)

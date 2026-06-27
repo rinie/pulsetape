@@ -16,7 +16,7 @@ void FrameAssembler::resetFrame() {
   pending_pulse_us_ = 0;
 }
 
-void FrameAssembler::finalizeFrame(uint32_t now_ms) {
+void FrameAssembler::finalizeFrame(uint32_t now_us) {
   // A frame ends on a HIGH whose trailing LOW is the inter-frame gap, so an odd
   // number of durations leaves one unpaired pulse. Drop it from the reported count
   // so count == the classified pair-elements (sum of the per-class counts); it
@@ -55,10 +55,10 @@ void FrameAssembler::finalizeFrame(uint32_t now_ms) {
       for (uint8_t i = 0; i < current_.class_count; i++)
         if (psi_.bucketHits(i) - psi_.bucketPulseHits(i) > 0) { current_.const_class = i; break; }
     }
-    current_.timestamp_ms = now_ms;
+    current_.timestamp_us = now_us;
 
     if (telegram_valid(current_, cfg_)) {
-      if (repeats_.offer(current_, cfg_, now_ms)) {
+      if (repeats_.offer(current_, cfg_, now_us)) {
         if (sink_) sink_(current_, sink_ctx_);
       }
     }
@@ -66,13 +66,13 @@ void FrameAssembler::finalizeFrame(uint32_t now_ms) {
   resetFrame();
 }
 
-void FrameAssembler::onEvent(const CaptureEvent& ev, uint32_t now_ms) {
+void FrameAssembler::onEvent(const CaptureEvent& ev, uint32_t now_us) {
   if (ev.type == CaptureEvent::FRAME_GAP) {
-    finalizeFrame(now_ms);
+    finalizeFrame(now_us);
     // Frame gaps also arrive on idle ticks, so this drives the window-close
     // "released" events (FORWARD_LAST/_BOTH) with their true repeat totals.
     RawTelegram* r;
-    while ((r = repeats_.takeExpired(cfg_, now_ms)) != nullptr) {
+    while ((r = repeats_.takeExpired(cfg_, now_us)) != nullptr) {
       if (sink_) sink_(*r, sink_ctx_);
     }
     return;
@@ -83,7 +83,7 @@ void FrameAssembler::onEvent(const CaptureEvent& ev, uint32_t now_ms) {
   // A long LOW (space) also marks the end of a frame.
   const bool on_space_slot = (current_.count & 1) != 0;
   if (on_space_slot && us > frame_gap_us_) {
-    finalizeFrame(now_ms);
+    finalizeFrame(now_us);
     return;
   }
 

@@ -72,7 +72,7 @@
 // --- Telegram quality / repeat tuning ---
 #define MIN_PULSES 8
 #define REPEAT_MIN_COUNT 2
-#define REPEAT_WINDOW_MS 800
+#define REPEAT_WINDOW_US 800000UL  // 800 ms — frames within this window count as repeats
 #define TAIL_TRIM_PAIRS 2   // drop trailing nibble pairs from the fingerprint
                             // (last bits wobble at the frame boundary); tune per captures
 #define MAX_CLASS_PCT 90    // reject if one timing class is >= this % of elements
