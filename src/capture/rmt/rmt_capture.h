@@ -20,17 +20,17 @@
 
 class RmtCapture : public ICaptureBackend {
  public:
-  bool begin(uint8_t data_pin) override;
+  bool begin(uint8_t dataPin) override;
   CaptureEvent next() override;
 
  private:
-  static const rmt_channel_t kChannel = RMT_CHANNEL_0;
+  static const rmt_channel_t channel = RMT_CHANNEL_0;
 
-  RingbufHandle_t rb_        = nullptr;
-  rmt_item32_t*   cur_items_ = nullptr;
-  size_t          cur_count_ = 0;
-  size_t          sym_idx_   = 0;
-  uint8_t         half_      = 0;
+  RingbufHandle_t rb       = nullptr;
+  rmt_item32_t*   curItems = nullptr;
+  size_t          curCount = 0;
+  size_t          symIdx   = 0;
+  uint8_t         half     = 0;
 };
 
 #endif // ARDUINO_ARCH_ESP32

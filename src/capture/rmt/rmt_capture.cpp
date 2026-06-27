@@ -8,11 +8,11 @@
 
 // APB clock is 80 MHz; divider 80 => 1 tick = 1 us, matching IDF v5 version.
 // Max 15-bit duration at 1 us/tick is 32767 us (matches PULSE_MAX_US = 32000).
-static const uint8_t RMT_CLK_DIV = 80;
+static const uint8_t rmtClkDiv = 80;
 
-bool RmtCapture::begin(uint8_t data_pin) {
-    rmt_config_t cfg = RMT_DEFAULT_CONFIG_RX((gpio_num_t)data_pin, kChannel);
-    cfg.clk_div = RMT_CLK_DIV;
+bool RmtCapture::begin(uint8_t dataPin) {
+    rmt_config_t cfg = RMT_DEFAULT_CONFIG_RX((gpio_num_t)dataPin, channel);
+    cfg.clk_div = rmtClkDiv;
     // Each RMT memory block holds 64 symbols = 128 edges; the default 1 block caps
     // a frame at 128 edges (NewKAKU ~132 was being truncated!). Use 4 blocks ->
     // 256 symbols = 512 edges, matching TELEGRAM_MAX_PULSES. (Channel 0 borrows
@@ -25,9 +25,9 @@ bool RmtCapture::begin(uint8_t data_pin) {
 
     if (rmt_config(&cfg) != ESP_OK) return false;
     // Ring buffer of 4096 bytes — enough for the longest OOK frame.
-    if (rmt_driver_install(kChannel, 4096, 0) != ESP_OK) return false;
-    rmt_get_ringbuf_handle(kChannel, &rb_);
-    rmt_rx_start(kChannel, /*rx_idx_rst=*/true);
+    if (rmt_driver_install(channel, 4096, 0) != ESP_OK) return false;
+    rmt_get_ringbuf_handle(channel, &rb);
+    rmt_rx_start(channel, /*rx_idx_rst=*/true);
     return true;
 }
 
@@ -38,49 +38,50 @@ CaptureEvent RmtCapture::next() {
     // IDF v4 RMT driver pushes one frame per ring-buffer item after the idle timeout.
     // Use a bounded wait so loop() returns periodically and the arduino-esp32 task
     // watchdog (fed between loop() calls) doesn't fire on a quiet channel.
-    if (!cur_items_) {
-        size_t rx_size = 0;
-        cur_items_ = (rmt_item32_t*)xRingbufferReceive(rb_, &rx_size, pdMS_TO_TICKS(500));
-        if (!cur_items_) {
-            ev.type = CaptureEvent::FRAME_GAP;
-            ev.duration_us = 0;
+    if (!curItems) {
+        size_t rxSize = 0;
+        curItems = (rmt_item32_t*)xRingbufferReceive(rb, &rxSize, pdMS_TO_TICKS(500));
+        if (!curItems) {
+            ev.type = CaptureEvent::frameGap;
+            ev.durationUs = 0;
             return ev;
         }
-        cur_count_ = rx_size / sizeof(rmt_item32_t);
-        sym_idx_   = 0;
-        half_      = 0;
+        curCount = rxSize / sizeof(rmt_item32_t);
+        symIdx   = 0;
+        half     = 0;
     }
 
     // Drain the current frame one duration at a time.
-    if (sym_idx_ < cur_count_) {
-        uint16_t dur = (half_ == 0) ? cur_items_[sym_idx_].duration0
-                                    : cur_items_[sym_idx_].duration1;
-        if (half_ == 0) {
-            half_ = 1;
-        } else {
-            half_ = 0;
-            sym_idx_++;
+    if (symIdx < curCount) {
+        uint16_t dur = (half == 0) ? curItems[symIdx].duration0
+                                   : curItems[symIdx].duration1;
+        if (half == 0) {
+            half = 1;
+        }
+        else {
+            half = 0;
+            symIdx++;
         }
 
         if (dur == 0) {
             // IDF v4 RMT marks end-of-frame with a zero-duration item.
-            vRingbufferReturnItem(rb_, cur_items_);
-            cur_items_ = nullptr;
-            ev.type = CaptureEvent::FRAME_GAP;
-            ev.duration_us = 0;
+            vRingbufferReturnItem(rb, curItems);
+            curItems = nullptr;
+            ev.type = CaptureEvent::frameGap;
+            ev.durationUs = 0;
             return ev;
         }
 
-        ev.type = CaptureEvent::DURATION;
-        ev.duration_us = dur;
+        ev.type = CaptureEvent::duration;
+        ev.durationUs = dur;
         return ev;
     }
 
     // Exhausted all items without an explicit zero terminator — still end of frame.
-    vRingbufferReturnItem(rb_, cur_items_);
-    cur_items_ = nullptr;
-    ev.type = CaptureEvent::FRAME_GAP;
-    ev.duration_us = 0;
+    vRingbufferReturnItem(rb, curItems);
+    curItems = nullptr;
+    ev.type = CaptureEvent::frameGap;
+    ev.durationUs = 0;
     return ev;
 }
 

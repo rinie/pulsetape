@@ -9,6 +9,6 @@
 
 // Print one telegram:
 //   RF;count=N;repeats=R;nibbles=<hex>;pulses=p1,p2,...
-void debug_print_telegram(const RawTelegram& t);
+void debugPrintTelegram(const RawTelegram& t);
 
 #endif // PULSETAPE_DEBUG_SINK_H

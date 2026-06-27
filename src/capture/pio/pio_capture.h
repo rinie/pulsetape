@@ -17,20 +17,20 @@
 
 class PioCapture : public ICaptureBackend {
  public:
-  // `pio` selects the PIO block (default pio0). The program is loaded at a fixed
+  // `block` selects the PIO block (default pio0). The program is loaded at a fixed
   // offset 0 so its absolute jmp targets are correct without a build toolchain;
   // therefore nothing else may occupy offset 0 on the same PIO block.
-  explicit PioCapture(PIO pio = pio0) : pio_(pio), sm_(0), pio_clk_hz_(0) {}
+  explicit PioCapture(PIO block = pio0) : pio(block), sm(0), pioClkHz(0) {}
 
-  bool begin(uint8_t data_pin) override;
+  bool begin(uint8_t dataPin) override;
   CaptureEvent next() override;
 
  private:
   uint32_t ticksToUs(uint32_t count) const;
 
-  PIO      pio_;
-  uint     sm_;
-  uint32_t pio_clk_hz_;  // effective PIO clock after clkdiv, cached in begin()
+  PIO      pio;
+  uint     sm;
+  uint32_t pioClkHz;  // effective PIO clock after clkdiv, cached in begin()
 };
 
 #endif // ARDUINO_ARCH_RP2040

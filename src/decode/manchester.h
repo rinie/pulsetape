@@ -14,6 +14,6 @@
 
 // Decode `t` into Manchester bits. Returns true on a plausible decode.
 // TODO: implement (preamble skip, half/full symbol classification, bit extract).
-bool decode_manchester(const RawTelegram& t, uint8_t* bits_out, uint16_t* bits_len);
+bool decodeManchester(const RawTelegram& t, uint8_t* bitsOut, uint16_t* bitsLen);
 
 #endif // PULSETAPE_DECODE_MANCHESTER_H
