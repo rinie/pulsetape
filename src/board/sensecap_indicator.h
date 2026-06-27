@@ -27,7 +27,8 @@
 #define TICKS_PER_US 5
 
 // --- Capture timing thresholds (microseconds) ---
-#define PULSE_MIN_US 50     // shorter than this is noise
+#define PULSE_MIN_US 100    // shorter than this is noise (clears ~64us AGC hash;
+                            // still passes KAKU/NewKAKU/Oregon, all >=~244us)
 #define PULSE_MAX_US 32000  // longer than this is silence/gap
 #define FRAME_GAP_US 8000   // silence that closes a frame (Oregon ~8ms, KAKU ~10ms)
 
@@ -36,7 +37,15 @@
 #define REPEAT_MIN_COUNT 2    // identical frames required before forwarding
 #define REPEAT_WINDOW_US 800000UL  // 800 ms — frames within this window count as repeats
 #define TAIL_TRIM_PAIRS 2     // trailing nibble pairs dropped from the fingerprint
-#define MAX_CLASS_PCT 90      // reject if one timing class is >= this % of elements
+#define MAX_CLASS_PCT 90      // reject if one timing class is >= this % (kept at 90:
+                              // real KAKU is ~75% in its short class)
 #define FORWARD_MODE FORWARD_LAST  // true repeat total at window close (or _SECOND / _BOTH)
+
+// --- Confidence scaling (noise rejection by repetition) ---
+// Weak frame (short fingerprint or loose gap) must repeat STRICT_REPEAT_COUNT times;
+// a strong one is trusted at REPEAT_MIN_COUNT.
+#define STRICT_MIN_NIBBLES 8        // fingerprint shorter than this is weak evidence
+#define STRICT_GAP_MAX_US  300000UL // inter-repeat gap > 300 ms is weak
+#define STRICT_REPEAT_COUNT 3       // repeats required to forward a weak frame
 
 #endif // PULSETAPE_BOARD_SENSECAP_INDICATOR_H
