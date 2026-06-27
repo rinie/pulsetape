@@ -71,6 +71,14 @@ struct TelegramConfig {
   uint8_t  maxClassPct;       // reject the frame if one timing class is >= this %
                               // of all elements (degenerate = noise/carrier, not data)
   uint8_t  forwardMode;       // FORWARD_LAST / _SECOND / _BOTH
+
+  // Confidence scaling: a "weak" frame (fingerprint shorter than strictMinNibbles,
+  // OR inter-repeat gap longer than strictGapMaxUs) must repeat strictRepeatCount
+  // times to be forwarded; a strong frame is trusted at repeatMinCount. Repetition
+  // is the validator, so more repeats buy a lower per-frame quality bar.
+  uint16_t strictMinNibbles;  // fingerprint shorter than this counts as weak
+  uint32_t strictGapMaxUs;    // inter-repeat gap longer than this counts as weak
+  uint8_t  strictRepeatCount; // repeats required to forward a weak frame
 };
 
 // Quality filter. Rejects telegrams that are too short, have too many

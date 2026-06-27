@@ -30,6 +30,9 @@ static TelegramConfig cfg = {
     /* tailTrimPairs  */ TAIL_TRIM_PAIRS,
     /* maxClassPct    */ MAX_CLASS_PCT,
     /* forwardMode    */ FORWARD_MODE,
+    /* strictMinNibbles  */ STRICT_MIN_NIBBLES,
+    /* strictGapMaxUs    */ STRICT_GAP_MAX_US,
+    /* strictRepeatCount */ STRICT_REPEAT_COUNT,
 };
 
 // ===================================================================== ESP32

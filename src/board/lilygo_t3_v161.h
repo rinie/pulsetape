@@ -65,7 +65,10 @@
 #define RF_FREQUENCY_HZ 433920000UL
 
 // --- Capture timing thresholds (microseconds) ---
-#define PULSE_MIN_US 50     // shorter = noise (RMT signal_range_min)
+#define PULSE_MIN_US 100    // shorter = noise (RMT glitch filter floor). 100us clears
+                            // the ~64us AGC hash yet keeps every protocol we target
+                            // (KAKU ~350, NewKAKU ~250, Oregon ~244); raise no further
+                            // or fast EV1527/KeeLoq (~100-200us) would be clipped.
 #define PULSE_MAX_US 32000  // 15-bit RMT duration at 1us resolution caps at 32767
 #define FRAME_GAP_US 8000   // silence that closes a frame (RMT signal_range_max)
 
@@ -76,9 +79,19 @@
 #define TAIL_TRIM_PAIRS 2   // drop trailing nibble pairs from the fingerprint
                             // (last bits wobble at the frame boundary); tune per captures
 #define MAX_CLASS_PCT 90    // reject if one timing class is >= this % of elements
-                            // (degenerate = noise/stuck carrier, not a telegram)
+                            // (degenerate = noise/stuck carrier, not a telegram).
+                            // Kept at 90: real KAKU runs ~75% in its short class
+                            // (counts=[97,32,1]), so a tighter bar would clip it.
 #define FORWARD_MODE FORWARD_LAST  // FORWARD_LAST (true repeat total, at window close)
                                    // / FORWARD_SECOND (immediate) / FORWARD_BOTH
+
+// --- Confidence scaling (noise rejection by repetition) ---
+// A weak frame (short fingerprint or loose repeat gap) must repeat STRICT_REPEAT_COUNT
+// times; a strong one is trusted at REPEAT_MIN_COUNT. Kills the short noise bursts that
+// coincidentally matched twice, without raising the bar for genuine remotes.
+#define STRICT_MIN_NIBBLES 8        // fingerprint shorter than this is weak evidence
+#define STRICT_GAP_MAX_US  300000UL // inter-repeat gap > 300 ms is weak (random-looking)
+#define STRICT_REPEAT_COUNT 3       // repeats required to forward a weak frame
 
 // --- Onboard SX1276/78 pins, sourced from the board variant's pins_arduino.h ---
 // Single source of truth: the right board gives the right pins, and resolves the

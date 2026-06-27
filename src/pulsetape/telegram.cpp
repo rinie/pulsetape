@@ -5,6 +5,11 @@
 bool telegramValid(const RawTelegram& t, const TelegramConfig& cfg) {
   if (t.count < cfg.minPulses) return false;
 
+  // Saturation reject: a frame that filled the capture buffer to the brim never
+  // ended on a real inter-frame gap — it's continuous energy (stuck carrier /
+  // noise hash), not a telegram. (This is the count == 512 case in the wild.)
+  if (t.count >= TELEGRAM_MAX_PULSES) return false;
+
   // Degenerate-frame reject: real OOK has >= 2 well-populated timing classes (the
   // bit symbols). If one class accounts for >= maxClassPct of all elements there
   // is no bit structure — it's noise or a stuck carrier, not a telegram.
@@ -106,18 +111,30 @@ bool RepeatDetector::offer(RawTelegram& t, const TelegramConfig& cfg, uint32_t n
   return false;
 }
 
+// Confidence scales with repeats (repetition IS the validator): a frame whose
+// fingerprint is short, or whose inter-repeat gap is loose, is weak evidence and
+// must repeat more times before we trust it. A long, tightly-repeating frame is
+// trusted at the base repeatMinCount.
+static bool weakSignal(const RawTelegram& t, const TelegramConfig& cfg) {
+  if (t.nibbleCount < cfg.strictMinNibbles) return true;
+  if (t.gapUs > cfg.strictGapMaxUs) return true;
+  return false;
+}
+
 RawTelegram* RepeatDetector::takeExpired(const TelegramConfig& cfg, uint32_t nowUs) {
   for (uint8_t i = 0; i < REPEAT_RING_SIZE; i++) {
     RawTelegram* r = &ring[i];
     if (r->nibbleCount == 0 || r->released) continue;
     if ((nowUs - r->timestampUs) <= cfg.repeatWindowUs) continue;  // window still open
 
-    if (cfg.forwardMode != FORWARD_SECOND && r->repeatCount >= cfg.repeatMinCount) {
+    // Strong signal -> trust at repeatMinCount; weak -> demand strictRepeatCount.
+    uint8_t needed = weakSignal(*r, cfg) ? cfg.strictRepeatCount : cfg.repeatMinCount;
+    if (cfg.forwardMode != FORWARD_SECOND && r->repeatCount >= needed) {
       r->released = 1;                  // skipped by find() hereafter; freed on reuse
       r->event = TELEGRAM_RELEASED;     // repeatCount is the true total
       return r;
     }
-    // Expired with no "released" event to emit (SECOND mode, or never confirmed): retire.
+    // Expired without enough repeats to clear its confidence bar (or SECOND mode): retire.
     r->nibbleCount = 0;
   }
   return nullptr;
