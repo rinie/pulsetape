@@ -49,7 +49,7 @@ static TelegramConfig cfg = {
 static RmtCapture capture;
 
 #ifdef ONBOARD_LED
-static const uint32_t LED_BLINK_MS = 40;
+static const uint32_t ledBlinkMs = 40;
 static uint32_t ledOffAt = 0;   // millis() deadline to switch the LED back off
 #endif
 
@@ -62,7 +62,7 @@ static void telegramSink(const RawTelegram& t, void*) {
 #endif
 #ifdef ONBOARD_LED
   digitalWrite(ONBOARD_LED, HIGH);
-  ledOffAt = millis() + LED_BLINK_MS;
+  ledOffAt = millis() + ledBlinkMs;
 #endif
 }
 

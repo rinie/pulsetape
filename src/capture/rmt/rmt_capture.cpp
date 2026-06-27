@@ -8,11 +8,11 @@
 
 // APB clock is 80 MHz; divider 80 => 1 tick = 1 us, matching IDF v5 version.
 // Max 15-bit duration at 1 us/tick is 32767 us (matches PULSE_MAX_US = 32000).
-static const uint8_t RMT_CLK_DIV = 80;
+static const uint8_t rmtClkDiv = 80;
 
 bool RmtCapture::begin(uint8_t dataPin) {
     rmt_config_t cfg = RMT_DEFAULT_CONFIG_RX((gpio_num_t)dataPin, channel);
-    cfg.clk_div = RMT_CLK_DIV;
+    cfg.clk_div = rmtClkDiv;
     // Each RMT memory block holds 64 symbols = 128 edges; the default 1 block caps
     // a frame at 128 edges (NewKAKU ~132 was being truncated!). Use 4 blocks ->
     // 256 symbols = 512 edges, matching TELEGRAM_MAX_PULSES. (Channel 0 borrows
@@ -42,7 +42,7 @@ CaptureEvent RmtCapture::next() {
         size_t rxSize = 0;
         curItems = (rmt_item32_t*)xRingbufferReceive(rb, &rxSize, pdMS_TO_TICKS(500));
         if (!curItems) {
-            ev.type = CaptureEvent::FRAME_GAP;
+            ev.type = CaptureEvent::frameGap;
             ev.durationUs = 0;
             return ev;
         }
@@ -67,12 +67,12 @@ CaptureEvent RmtCapture::next() {
             // IDF v4 RMT marks end-of-frame with a zero-duration item.
             vRingbufferReturnItem(rb, curItems);
             curItems = nullptr;
-            ev.type = CaptureEvent::FRAME_GAP;
+            ev.type = CaptureEvent::frameGap;
             ev.durationUs = 0;
             return ev;
         }
 
-        ev.type = CaptureEvent::DURATION;
+        ev.type = CaptureEvent::duration;
         ev.durationUs = dur;
         return ev;
     }
@@ -80,7 +80,7 @@ CaptureEvent RmtCapture::next() {
     // Exhausted all items without an explicit zero terminator — still end of frame.
     vRingbufferReturnItem(rb, curItems);
     curItems = nullptr;
-    ev.type = CaptureEvent::FRAME_GAP;
+    ev.type = CaptureEvent::frameGap;
     ev.durationUs = 0;
     return ev;
 }

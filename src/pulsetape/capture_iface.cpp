@@ -68,7 +68,7 @@ void FrameAssembler::finalizeFrame(uint32_t nowUs) {
 }
 
 void FrameAssembler::onEvent(const CaptureEvent& ev, uint32_t nowUs) {
-  if (ev.type == CaptureEvent::FRAME_GAP) {
+  if (ev.type == CaptureEvent::frameGap) {
     finalizeFrame(nowUs);
     // Frame gaps also arrive on idle ticks, so this drives the window-close
     // "released" events (FORWARD_LAST/_BOTH) with their true repeat totals.

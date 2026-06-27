@@ -23,8 +23,8 @@
 // One event from a capture backend.
 struct CaptureEvent {
   enum Type : uint8_t {
-    DURATION,   // durationUs holds a measured HIGH or LOW edge length
-    FRAME_GAP   // a long silence / overflow closed the current frame
+    duration,   // durationUs holds a measured HIGH or LOW edge length
+    frameGap    // a long silence / overflow closed the current frame
   };
   Type     type;
   uint16_t durationUs;  // meaningful only when type == DURATION
